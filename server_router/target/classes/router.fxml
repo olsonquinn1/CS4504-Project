@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.AnchorPane?>
+
+<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/18" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.project.server_router.RouterApp">
+   <children>
+      <ListView fx:id="lv_servers" layoutX="14.0" layoutY="31.0" prefHeight="243.0" prefWidth="200.0" />
+      <Label layoutX="95.0" layoutY="14.0" text="Servers" />
+      <ListView fx:id="lv_clients" layoutX="14.0" layoutY="293.0" prefHeight="93.0" prefWidth="200.0" />
+      <Label layoutX="97.0" layoutY="276.0" text="Clients" />
+      <Label fx:id="lb_conn_status" layoutX="225.0" layoutY="31.0" prefHeight="84.0" prefWidth="360.0" style="-fx-border-color: #000000;" />
+      <TextArea fx:id="ta_log" editable="false" layoutX="225.0" layoutY="125.0" prefHeight="262.0" prefWidth="360.0" />
+   </children>
+</AnchorPane>
