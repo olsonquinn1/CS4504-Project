@@ -12,7 +12,7 @@ loading project:
 
 build:
 	* open cli in project root dir
-	mvn clean install -DskipTests
+	mvn clean install
 	
 to run a particular module:
 
@@ -25,6 +25,5 @@ mvn -pl server exec:java "-Dexec.mainClass=com.project.server.ServerApp"
 Client:
 mvn -pl client exec:java "-Dexec.mainClass=com.project.client.ClientApp"
 
-router ip is probably 73.137.88.81 
-client port: 5556
-server port: 5555
+Test:
+mvn -pl shared exec:java "-Dexec.mainClass=com.project.shared.Test"

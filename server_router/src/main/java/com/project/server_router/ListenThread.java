@@ -7,7 +7,6 @@ import java.util.List;
 
 public class ListenThread extends Thread {
 
-    private final int listenPort;
     private final ServerSocket listenSocket;
     private final List<Connection> routingTable;
     private final RouterApp routerApp;
@@ -15,7 +14,6 @@ public class ListenThread extends Thread {
     public ListenThread(ServerSocket listenSocket, List<Connection> routingTable, RouterApp routerApp) throws IOException {
         this.routerApp = routerApp;
         this.listenSocket = listenSocket;
-        this.listenPort = listenSocket.getLocalPort();
         this.routingTable = routingTable;
     }
 

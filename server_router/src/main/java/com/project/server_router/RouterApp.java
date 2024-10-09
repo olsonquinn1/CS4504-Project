@@ -110,7 +110,7 @@ public class RouterApp extends Application {
       ObservableList<String> servers =
          FXCollections.observableArrayList(
             routingTable.stream()
-            .filter(Connection::isServer)
+            .filter(conn -> conn.isServer())
             .map(conn -> conn.getAddr() + ":" + conn.getPort() + "(" + conn.getLogicalCores() + ")")
             .collect(Collectors.toList())
          );
@@ -125,6 +125,9 @@ public class RouterApp extends Application {
 
       lv_servers.setItems(servers);
       lv_clients.setItems(clients);
+
+      lv_servers.refresh();
+      lv_clients.refresh();
    }
 
    public synchronized void writeToConsole(String message) {

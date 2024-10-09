@@ -47,12 +47,12 @@ public class ServerApp extends Application {
    @Override
    public void start(Stage stage) {
 
-      FXMLLoader loader = new FXMLLoader(getClass().getResource("/client.fxml"));
+      FXMLLoader loader = new FXMLLoader(getClass().getResource("/server.fxml"));
       try {
          Parent root = loader.load();
          Scene scene = new Scene(root);
          primaryStage = stage;
-         primaryStage.setTitle("Client");
+         primaryStage.setTitle("Server");
          primaryStage.setScene(scene);
          primaryStage.show();
          primaryStage.setOnCloseRequest(event -> {

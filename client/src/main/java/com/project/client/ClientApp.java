@@ -8,6 +8,9 @@ import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+
 import javafx.application.Application;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -17,6 +20,8 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
+
+import com.project.shared.Data;
 
 public class ClientApp extends Application {
 
@@ -33,6 +38,10 @@ public class ClientApp extends Application {
 
     private Stage primaryStage;
 
+    private BlockingQueue<Data> outBuffer = new LinkedBlockingQueue<Data>();
+
+    private long lastPing = 0;
+
     @FXML
     private TextField tf_addr;
     @FXML
@@ -42,7 +51,7 @@ public class ClientApp extends Application {
     @FXML
     private TextArea ta_log;
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         launch(args);
     }
 
@@ -59,9 +68,9 @@ public class ClientApp extends Application {
             primaryStage.setOnCloseRequest(event -> {
                 if (socket != null) {
                    try {
-                      socket.close();
                       out.close();
                       in.close();
+                      socket.close();
                    } catch (IOException e) {
                       e.printStackTrace();
                       System.exit(1);
@@ -92,6 +101,56 @@ public class ClientApp extends Application {
             }
             tf_port.setStyle("-fx-border-color: black");
         });
+
+        lb_conn_status.setText("Disconnected");
+
+        tf_addr.setText("localhost");
+        tf_port.setText("5555");
+    }
+
+    protected void readLoop() {
+        while (true) {
+            Data recv = null;
+            try {
+                recv = (Data) in.readObject();
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+                break;
+            } catch (IOException e) {
+                e.printStackTrace();
+                break;
+            }
+
+            if(recv.getType() == Data.Type.CLOSE) {
+                writeToConsole("Connection closed by server");
+                try {
+                    closeConnections();
+                } catch (IOException e) {
+                    writeToConsole("Error disconnecting from router");
+                    e.printStackTrace();
+                }
+                break;
+            }
+        }
+    }
+
+    private void writeLoop() {
+        while(true) {
+            Data data = null;
+            try {
+                data = outBuffer.take();
+                out.writeObject(data);
+                out.flush();
+            }
+            catch (InterruptedException e) {
+                e.printStackTrace();
+                break;
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+                break;
+            }
+        }
     }
 
     public void writeToConsole(String message) {
@@ -117,17 +176,22 @@ public class ClientApp extends Application {
         myAddr = socket.getLocalAddress().getHostAddress();
         myPort = socket.getLocalPort();
 
+        new Thread(this::readLoop).start();
+        new Thread(this::writeLoop).start();
+
         // set addr and port fields to uneditable
         tf_addr.setEditable(false);
         tf_port.setEditable(false);
     }
 
-    public void disconnectFromRouter() throws IOException {
+    public void closeConnections() throws IOException {
 
         if (socket == null) {
             return;
         }
 
+        out.close();
+        in.close();
         socket.close();
 
         writeToConsole("Disconnected from router");
@@ -168,7 +232,7 @@ public class ClientApp extends Application {
     @FXML
     public void disconnectButtonClicked() {
         try {
-            disconnectFromRouter();
+            closeConnections();
         } catch (IOException e) {
             lb_conn_status.setText("Error disconnecting from router");
             writeToConsole("Error disconnecting from router");

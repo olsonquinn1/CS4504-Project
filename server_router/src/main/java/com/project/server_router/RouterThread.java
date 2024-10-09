@@ -8,42 +8,28 @@ import java.util.List;
 
 public abstract class RouterThread extends Thread {
 
-	protected final Connection myConnection; // ConnectionData object for this thread
+	protected final Connection myConnection; // Connection object for this thread
 
 	protected final List<Connection> routingTable; // List of all the connections
 
-	protected ObjectOutputStream out; // writer to send to the client
-	protected ObjectInputStream in; // reader to read from the client
+	protected final ObjectOutputStream out; // writer to send to the client
+	protected final ObjectInputStream in; // reader to read from the client
 
 	protected final boolean isServer;
 
-	protected RouterApp routerApp;
+	protected final RouterApp routerApp;
+
+	protected final Socket socket;
 
 	// Constructor
-	public RouterThread(Socket clientSocket, List<Connection> routingTable, boolean isServer, RouterApp routerApp) throws IOException {
+	public RouterThread(Socket socket, List<Connection> routingTable, boolean isServer, RouterApp routerApp) throws IOException {
+		this.socket = socket;
 		this.routerApp = routerApp;
-		out = new ObjectOutputStream(clientSocket.getOutputStream());
-		in = new ObjectInputStream(clientSocket.getInputStream());
+		out = new ObjectOutputStream(socket.getOutputStream());
+		in = new ObjectInputStream(socket.getInputStream());
 		this.routingTable = routingTable;
 		this.isServer = isServer;
-		myConnection = new Connection(clientSocket, isServer);
+		myConnection = new Connection(socket, isServer, this);
 		routingTable.add(myConnection);
-	}
-
-	// Run method (will run for each machine that connects to the ServerRouter)
-	public void run() {
-
-		// closing open resources
-		try {
-			out.close();
-			in.close();
-			myConnection.getSocket().close();
-		} catch (IOException e) {
-			System.err.println("Could not close Connection.");
-			e.printStackTrace();
-		} finally {
-			routingTable.remove(myConnection);
-			System.out.println("Connection to " + myConnection.getAddr() + ":" + myConnection.getPort() + " closed.");
-		}
 	}
 }

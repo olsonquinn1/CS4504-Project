@@ -7,6 +7,8 @@ public class Data implements Serializable {
     public static enum Type {
         REQUEST,
         RESPONSE,
+        CLOSE,
+        PING,
         MATRIX_DATA,
         TASK_DATA,
         PROFILING_DATA
@@ -22,12 +24,12 @@ public class Data implements Serializable {
 
     private final Serializable payload;
 
-    public Data(Type type, String destAddr, int destPort, String fromAddr, int fromPort, Serializable payload) {
+    public Data(Type type, String destAddr, int destPort, String senderAddr, int senderPort, Serializable payload) {
         this.type = type;
         this.destAddr = destAddr;
         this.destPort = destPort;
-        this.senderAddr = fromAddr;
-        this.senderPort = fromPort;
+        this.senderAddr = senderAddr;
+        this.senderPort = senderPort;
         this.payload = payload;
     }
 

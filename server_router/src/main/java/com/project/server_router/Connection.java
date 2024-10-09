@@ -15,9 +15,12 @@ public class Connection {
     private final int port;
     private final int logicalCores;
 
+    private final RouterThread myThread;
+
     public BlockingQueue<Data> dataQueue;
  
-    Connection(Socket socket, boolean isServer) {
+    Connection(Socket socket, boolean isServer, RouterThread myThread) {
+        this.myThread = myThread;
         logicalCores = 1;
         this.isServer = isServer;
         this.socket = socket;
@@ -25,6 +28,18 @@ public class Connection {
 
         addr = socket.getInetAddress().getHostAddress();
         port = socket.getPort();
+    }
+
+    public void close() {
+        try {
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public RouterThread getThread() {
+        return myThread;
     }
 
     public int getLogicalCores() {

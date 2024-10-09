@@ -4,12 +4,10 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.List;
 
-import com.project.shared.Data;
-
 public class ServerThread extends RouterThread {
     
-    public ServerThread(Socket clientSocket, List<Connection> routingTable, RouterApp routingApp) throws IOException {
-        super(clientSocket, routingTable, true, routingApp);
+    public ServerThread(Socket clientSocket, List<Connection> routingTable, RouterApp routerApp) throws IOException {
+        super(clientSocket, routingTable, true, routerApp);
     }
 
     public void run() {
