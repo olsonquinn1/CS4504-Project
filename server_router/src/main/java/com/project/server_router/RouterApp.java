@@ -1,7 +1,8 @@
 package com.project.server_router;
 
 import java.io.IOException;
-
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.net.ServerSocket;
 
 import java.util.ArrayList;
@@ -24,15 +25,20 @@ import javafx.scene.control.Label;
 
 public class RouterApp extends Application {
 
-   private final int listenPort = 5555;
+   private final int serverPort = 5555;
+   private final int clientPort = 5556;
 
-   private ServerSocket listenSocket = null;
+   private ServerSocket listenSocket_server = null;
+   private ServerSocket listenSocket_client = null;
 
    private final List<Connection> routingTable = Collections.synchronizedList(new ArrayList<Connection>());;
 
-   private ListenThread connectionListener = null;
+   private ListenThread clientListener = null;
+   private ListenThread serverListener = null;
 
    private Stage primaryStage;
+
+   private PrintStream log;
 
    @FXML
    private TextArea ta_log;
@@ -72,37 +78,39 @@ public class RouterApp extends Application {
    @FXML
    private void initialize() {
 
-      try {
-         listenSocket = new ServerSocket(listenPort);
-         writeToConsole("Server Socket created on port: " + listenPort);
-      } catch (IOException e) {
-         System.err.println("Could not listen on port: " + listenPort + "\n" + e.getMessage());
-         e.printStackTrace();
-         System.exit(1);
-      }
+      setUpLogStream(ta_log, log);
 
-      startListener();
+      startListener(serverListener, listenSocket_server, serverPort, true);
+      startListener(clientListener, listenSocket_client, clientPort, false);
    }
 
    // sets up the listener thread
-   private void startListener() {
+   private void startListener(ListenThread listener, ServerSocket serverSocket, int port, boolean isServer) {
+
+      if(serverSocket == null) {
+         try {
+            serverSocket = new ServerSocket(port);
+         } catch (IOException e) {
+            System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+         }
+      }
 
       try {
 
-         if (connectionListener != null)
-            connectionListener.interrupt();
+         if (listener != null)
+            listener.interrupt();
 
-         connectionListener = new ListenThread(listenSocket, routingTable, this);
-         connectionListener.start();
-         System.out.println("ServerRouter is listening for clients on port: " + listenPort);
+         listener = new ListenThread(serverSocket, routingTable, this, isServer);
+         listener.start();
       } catch (IOException e) {
-         System.err.println("Could not listen on port: " + listenPort + "\n" + e.getMessage());
+         System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
          e.printStackTrace();
          System.exit(1);
       }
 
-      writeToConsole("Listener started on port: " + listenPort);
-      lb_conn_status.setText("Listening on port: " + listenPort);
+      log.println("Listener started on port: " + port);
    }
 
    public synchronized void updateConnectionLists() {
@@ -130,14 +138,32 @@ public class RouterApp extends Application {
       lv_clients.refresh();
    }
 
-   public synchronized void writeToConsole(String message) {
-      ta_log.setText(ta_log.getText() + "\n" + message);
+   private void setUpLogStream(TextArea ta, PrintStream ps) {
+      OutputStream out = new OutputStream() {
+         @Override
+         public synchronized void write(int b) {
+            ta.appendText(String.valueOf((char) b));
+         }
+
+         @Override
+         public synchronized void write(byte[] b, int off, int len) {
+            ta.appendText(new String(b, off, len));
+         }
+      };
+
+      ps = new PrintStream(out, true);
+   }
+
+   public void writeToConsole(String s) {
+      log.println(s);
    }
 
    private void closeConnections() {
       try {
-         if(listenSocket != null && !listenSocket.isClosed())
-            listenSocket.close();
+         if(listenSocket_server != null)
+            listenSocket_server.close();
+         if(listenSocket_client != null)
+            listenSocket_client.close();
       } catch (IOException e) {
          System.err.println("Error closing server and client sockets.");
          e.printStackTrace();

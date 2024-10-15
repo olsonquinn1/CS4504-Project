@@ -10,21 +10,32 @@ public class ListenThread extends Thread {
     private final ServerSocket listenSocket;
     private final List<Connection> routingTable;
     private final RouterApp routerApp;
+    private final boolean isServer;
 
-    public ListenThread(ServerSocket listenSocket, List<Connection> routingTable, RouterApp routerApp) throws IOException {
+    public ListenThread(ServerSocket listenSocket, List<Connection> routingTable, RouterApp routerApp, boolean isServer) throws IOException {
         this.routerApp = routerApp;
         this.listenSocket = listenSocket;
         this.routingTable = routingTable;
+        this.isServer = isServer;
     }
 
     public void run() {
         try {
             while (true) {
                 Socket incomingSocket = listenSocket.accept();
-                boolean isServer = false;
-                RouterThread t = new ClientThread(incomingSocket, routingTable, routerApp);
-                t.start();
-                routerApp.writeToConsole("ListenThread: Accepted Machine: " + incomingSocket.getInetAddress().getHostAddress() + ":" + incomingSocket.getPort());
+
+                if (isServer) {
+                    new ServerThread(incomingSocket, routingTable, routerApp).start();
+                } else {
+                    new ClientThread(incomingSocket, routingTable, routerApp).start();
+                }
+
+                routerApp.writeToConsole(
+                    "ListenThread: Accepted "
+                    + (isServer ? "Server" : "Client")
+                    + ": " + incomingSocket.getInetAddress().getHostAddress()
+                    + ":" + incomingSocket.getPort()
+                );
                 routerApp.updateConnectionLists();
             }
         } catch (IOException e) {

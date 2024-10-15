@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 public class Data implements Serializable {
     
-    public static enum Type {
+    public enum Type {
         REQUEST,
         RESPONSE,
         CLOSE,

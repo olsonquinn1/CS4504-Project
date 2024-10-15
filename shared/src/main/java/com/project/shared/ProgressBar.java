@@ -1,21 +1,32 @@
 package com.project.shared;
 
+import java.io.PrintStream;
+
 public class ProgressBar {
     
     private int maxProgress;
-    private int currentProgress;
+    private double currentProgress;
     private int barLength;
-    private int currentBarProgress;
+    private double currentBarProgress;
     private double progressPerBar;
+    private PrintStream out;
 
-    public ProgressBar(int maxProgress, int barLength) {
+    public ProgressBar(int maxProgress, int barLength, PrintStream out) {
+        this.out = out;
         this.maxProgress = maxProgress;
         this.barLength = barLength;
         this.currentProgress = 0;
+        this.currentBarProgress = 0;
         this.progressPerBar = (double) maxProgress / barLength;
     }
 
     public void start() {
+        reset();
+        write("" + progressPerBar + "\n");
+        writeIndicatorBar();
+    }
+
+    private void writeIndicatorBar() {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < barLength; i++) {
             sb.append("-");
@@ -26,27 +37,27 @@ public class ProgressBar {
     }
 
     public void reset() {
-        write("progress: " + currentProgress + "/" + maxProgress + "\n");
         currentProgress = 0;
         currentBarProgress = 0;
-        
-        write("\n");
     }
 
     public synchronized void progress(int amount) {
         currentBarProgress += amount;
         while (currentBarProgress >= progressPerBar && currentProgress < maxProgress) {
-            currentProgress += amount;
-            write("\u2588");
+            currentProgress += progressPerBar;
             currentBarProgress -= progressPerBar;
+            write("\u2588");
+        }
+        if(currentProgress >= maxProgress) {
+            write("\n");
         }
     }
 
     private synchronized void write(String s) {
-        System.out.print(s);
+        out.print(s);
     }
 
-    public void printCurrentProgress() {
-        write("progress: " + currentProgress + "/" + maxProgress + "\n");
+    public double getProgress() {
+        return currentProgress;
     }
 }

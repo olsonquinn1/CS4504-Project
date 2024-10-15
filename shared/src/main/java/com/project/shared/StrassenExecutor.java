@@ -1,12 +1,11 @@
 package com.project.shared;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.project.shared.MatrixUtil.add;
 import static com.project.shared.MatrixUtil.divideIntoQuadrants;
@@ -16,233 +15,177 @@ import static com.project.shared.MatrixUtil.sub;
 
 public class StrassenExecutor {
 
-    private ProgressBar pb;
-
     private ExecutorService executor;
     private int strassenThreshold;
     private int threadThreshold;
     private int nThreads;
+    
+    private AtomicInteger multCounter = new AtomicInteger(0);
+    private AtomicLong timeMultiplying = new AtomicLong(0);
+    private AtomicLong timeCalculatingC = new AtomicLong(0);
+    private AtomicLong timeJoining = new AtomicLong(0);
+    private AtomicLong timeDividing = new AtomicLong(0);
 
-    public StrassenExecutor(int nThreads) {
+    public StrassenExecutor(int nThreads, int strassenThreshold, int threadThreshold) {
+        this.strassenThreshold = strassenThreshold;
+        this.threadThreshold = threadThreshold;
         this.nThreads = nThreads;
     }
 
-    public int[][] run(int[][] A, int[][] B, boolean serial, int strassenThreshold) throws InterruptedException, ExecutionException, IllegalArgumentException {
+    public int[][] run(int[][] A, int[][] B) throws InterruptedException, ExecutionException, IllegalArgumentException {
         
+        this.executor = Executors.newFixedThreadPool(nThreads);
+
         int matrixSize = A.length;
 
-        int multCount = (int)Math.pow(7, matrixSize / strassenThreshold);
-
-        pb = new ProgressBar(multCount, 150);
-
-        if(A.length != B.length || A[0].length != B[0].length) {
-            throw new IllegalArgumentException("Matrices must be of the same size");
+        if(A.length != A[0].length || B.length != B[0].length) {
+            throw new IllegalArgumentException("Matrix dimensions must be square");
         }
 
-        if(matrixSize % 2 != 0) {
-            throw new IllegalArgumentException("Matrix size must be a power of 2");
+        if(A.length != B.length) {
+            throw new IllegalArgumentException("Matrix dimensions must be equal");
         }
 
-        if(matrixSize % strassenThreshold != 0) {
-            throw new IllegalArgumentException("Matrix size must be divisible by the Strassen threshold");
+        if((matrixSize & (matrixSize - 1)) != 0) {
+            throw new IllegalArgumentException("Matrix dimensions must be a power of 2");
         }
 
-        if(serial || nThreads == 1) {
-            pb.reset();
-            pb.start();
-            return strassen_serial(A, B);
-        } else {
-            executor = Executors.newFixedThreadPool(nThreads);
-            threadThreshold = matrixSize / 2;
-            pb.reset();
-            pb.start();
-            return strassen_parallel(A, B);
-        }
-    }
+        int[][] res = strassen(A, B);
 
-    public void shutdown() {
+        System.out.println("Multiplications: " + multCounter.get());
+        System.out.println("Time multiplying: " + timeMultiplying.get() + "ms");
+        System.out.println("Time calculating C: " + timeCalculatingC.get() + "ms");
+        System.out.println("Time joining: " + timeJoining.get() + "ms");
+        System.out.println("Time dividing: " + timeDividing.get() + "ms");
+
         executor.shutdown();
+
+        return res;
     }
 
-    private int[][] strassen_parallel(int[][] A, int[][] B) throws InterruptedException, ExecutionException {
-        int n = A.length;
-
-        if (n <= strassenThreshold) {
-            pb.progress(1);
-            return matrixMult(A, B);
-        }
-
-        if (n <= threadThreshold) {
-            return strassen_serial(A, B);
-        }
-
-        int halfSize = n / 2;
-
-        int[][] A11 = new int[halfSize][halfSize];
-        int[][] A12 = new int[halfSize][halfSize];
-        int[][] A21 = new int[halfSize][halfSize];
-        int[][] A22 = new int[halfSize][halfSize];
-
-        int[][] B11 = new int[halfSize][halfSize];
-        int[][] B12 = new int[halfSize][halfSize];
-        int[][] B21 = new int[halfSize][halfSize];
-        int[][] B22 = new int[halfSize][halfSize];
-
-        if(n < 16384) { //making threads for this is faster when n >= 16384
-            divideIntoQuadrants(A, A11, A12, A21, A22);
-            divideIntoQuadrants(B, B11, B12, B21, B22);
-        }
-        else {
-            List<Callable<Void>> divideTasks = new ArrayList<>();
-            divideTasks.add(() -> {
-                divideIntoQuadrants(A, A11, A12, A21, A22);
-                return null;
-            });
-            divideTasks.add(() -> {
-                divideIntoQuadrants(B, B11, B12, B21, B22);
-                return null;
-            });
-            executor.invokeAll(divideTasks);
-        }
-
-        Future<int[][]> M1f = executor.submit(() -> strassen_parallel(
-                add(A11, A22), add(B11, B22)));     // M1 = (A11 + A22)(B11 + B22)
-        Future<int[][]> M2f = executor.submit(() -> strassen_parallel(
-                add(A21, A22), B11));               // M2 = (A21 + A22)B11
-        Future<int[][]> M3f = executor.submit(() -> strassen_parallel(
-                A11, sub(B12, B22)));               // M3 = A11(B12 - B22)
-        Future<int[][]> M4f = executor.submit(() -> strassen_parallel(
-                A22, sub(B21, B11)));               // M4 = A22(B21 - B11)
-        Future<int[][]> M5f = executor.submit(() -> strassen_parallel(
-                add(A11, A12), B22));               // M5 = (A11 + A12)B22
-        Future<int[][]> M6f = executor.submit(() -> strassen_parallel( 
-                sub(A21, A11), add(B11, B12)));     // M6 = (A21 - A11)(B11 + B12)
-        Future<int[][]> M7f = executor.submit(() -> strassen_parallel(
-                sub(A12, A22), add(B21, B22)));     // M7 = (A12 - A22)(B21 + B22)
-
-        int[][] M1 = M1f.get();
-        int[][] M2 = M2f.get();
-        int[][] M3 = M3f.get();
-        int[][] M4 = M4f.get();
-        int[][] M5 = M5f.get();
-        int[][] M6 = M6f.get();
-        int[][] M7 = M7f.get();
-
-        int[][] C11;
-        int[][] C12;
-        int[][] C21;
-        int[][] C22;
-
-        int[][] C = new int[n][n];
-        int newSize = n / 2;
-
-        if(n < 8192) {
-            C11 = add(sub(add(M1, M4), M5), M7); // C11 = M1 + M4 - M5 + M7
-            C12 = add(M3, M5); // C12 = M3 + M5
-            C21 = add(M2, M4); // C21 = M2 + M4
-            C22 = add(sub(add(M1, M3), M2), M6); // C22 = M1 - M2 + M3 + M6
-
-            join(C, C11, 0, 0);
-            join(C, C12, 0, newSize);
-            join(C, C21, newSize, 0);
-            join(C, C22, newSize, newSize);
-        }
-        else {
-            Future<int[][]> C11f = executor.submit(() -> add(sub(add(M1, M4), M5), M7));
-            Future<int[][]> C12f = executor.submit(() -> add(M3, M5));
-            Future<int[][]> C21f = executor.submit(() -> add(M2, M4));
-            Future<int[][]> C22f = executor.submit(() -> add(sub(add(M1, M3), M2), M6));
-
-            C11 = C11f.get();
-            C12 = C12f.get();
-            C21 = C21f.get();
-            C22 = C22f.get();
-
-            List<Callable<Void>> joinTasks = new ArrayList<>();
-
-            joinTasks.add(() -> {
-                join(C, C11, 0, 0);
-                return null;
-            });
-            joinTasks.add(() -> {
-                join(C, C12, 0, newSize);
-                return null;
-            });
-            joinTasks.add(() -> {
-                join(C, C21, newSize, 0);
-                return null;
-            });
-            joinTasks.add(() -> {
-                join(C, C22, newSize, newSize);
-                return null;
-            });
-
-            executor.invokeAll(joinTasks);
-        }
+    public int[][] strassen(int[][] A, int[][] B) throws InterruptedException, ExecutionException {
         
-        return C;
-    }
+        int matrixSize = A.length;
+        boolean makeNewTasks = true;
+        int half = matrixSize / 2;
+        long t = 0;
 
-    private int[][] strassen_serial(int[][] A, int[][] B) {
-
-        int n = A.length;
-
-        if (A.length != B.length) {
-            throw new IllegalArgumentException("Matrices must be of the same size");
+        if (matrixSize <= strassenThreshold) {
+            multCounter.incrementAndGet();
+            t = System.currentTimeMillis();
+            int[][] res = matrixMult(A, B);
+            timeMultiplying.addAndGet(System.currentTimeMillis() - t);
+            return res;
         }
 
-        if (n % 2 != 0) {
-            throw new IllegalArgumentException("Matrix size must be a power of 2");
+        if (matrixSize <= threadThreshold) {
+            makeNewTasks = false;
         }
 
-        if (n <= strassenThreshold) {
-            pb.progress(1);
-            return matrixMult(A, B);
-        }
+        int[][] A11 = new int[half][half];
+        int[][] A12 = new int[half][half];
+        int[][] A21 = new int[half][half];
+        int[][] A22 = new int[half][half];
 
-        int halfSize = n / 2;
+        int[][] B11 = new int[half][half];
+        int[][] B12 = new int[half][half];
+        int[][] B21 = new int[half][half];
+        int[][] B22 = new int[half][half];
 
-        int[][] A11 = new int[halfSize][halfSize];
-        int[][] A12 = new int[halfSize][halfSize];
-        int[][] A21 = new int[halfSize][halfSize];
-        int[][] A22 = new int[halfSize][halfSize];
-
-        int[][] B11 = new int[halfSize][halfSize];
-        int[][] B12 = new int[halfSize][halfSize];
-        int[][] B21 = new int[halfSize][halfSize];
-        int[][] B22 = new int[halfSize][halfSize];
-
+        t = System.currentTimeMillis();
         divideIntoQuadrants(A, A11, A12, A21, A22);
         divideIntoQuadrants(B, B11, B12, B21, B22);
+        timeDividing.addAndGet(System.currentTimeMillis() - t);
 
-        int[][] M1 = strassen_serial( // M1 = (A11 + A22)(B11 + B22)
-                add(A11, A22), add(B11, B22));
-        int[][] M2 = strassen_serial( // M2 = (A21 + A22)B11
-                add(A21, A22), B11);
-        int[][] M3 = strassen_serial( // M3 = A11(B12 - B22)
-                A11, sub(B12, B22));
-        int[][] M4 = strassen_serial( // M4 = A22(B21 - B11)
-                A22, sub(B21, B11));
-        int[][] M5 = strassen_serial( // M5 = (A11 + A12)B22
-                add(A11, A12), B22);
-        int[][] M6 = strassen_serial( // M6 = (A21 - A11)(B11 + B12)
-                sub(A21, A11), add(B11, B12));
-        int[][] M7 = strassen_serial( // M7 = (A12 - A22)(B21 + B22)
-                sub(A12, A22), add(B21, B22));
+        int[][] M1 = null;
+        int[][] M2 = null;
+        int[][] M3 = null;
+        int[][] M4 = null;
+        int[][] M5 = null;
+        int[][] M6 = null;
+        int[][] M7 = null;
 
-        int[][] C11 = add(sub(add(M1, M4), M5), M7); // C11 = M1 + M4 - M5 + M7
-        int[][] C12 = add(M3, M5); // C12 = M3 + M5
-        int[][] C21 = add(M2, M4); // C21 = M2 + M4
-        int[][] C22 = add(sub(add(M1, M3), M2), M6); // C22 = M1 - M2 + M3 + M6
+        if(makeNewTasks) {
 
-        int[][] C = new int[n][n];
-        int newSize = n / 2;
+            Future<int[][]> M1f = executor.submit(() -> strassen( // M1 = (A11 + A22)(B11 + B22)
+                    add(A11, A22), add(B11, B22)));
 
+            Future<int[][]> M2f = executor.submit(() -> strassen( // M2 = (A21 + A22)B11
+                    add(A21, A22), B11));
+
+            Future<int[][]> M3f = executor.submit(() -> strassen( // M3 = A11(B12 - B22)
+                    A11, sub(B12, B22)));
+
+            Future<int[][]> M4f = executor.submit(() -> strassen( // M4 = A22(B21 - B11)
+                    A22, sub(B21, B11)));
+
+            Future<int[][]> M5f = executor.submit(() -> strassen( // M5 = (A11 + A12)B22
+                    add(A11, A12), B22));
+
+            Future<int[][]> M6f = executor.submit(() -> strassen( // M6 = (A21 - A11)(B11 + B12)
+                    sub(A21, A11), add(B11, B12)));
+
+            Future<int[][]> M7f = executor.submit(() -> strassen( // M7 = (A12 - A22)(B21 + B22)
+                    sub(A12, A22), add(B21, B22)));
+
+            M1 = M1f.get();
+            M2 = M2f.get();
+            M3 = M3f.get();
+            M4 = M4f.get();
+            M5 = M5f.get();
+            M6 = M6f.get();
+            M7 = M7f.get();
+
+        } else {
+            M1 = strassen( // M1 = (A11 + A22)(B11 + B22)
+                    add(A11, A22), add(B11, B22));
+            M2 = strassen( // M2 = (A21 + A22)B11
+                    add(A21, A22), B11);
+            M3 = strassen( // M3 = A11(B12 - B22)
+                    A11, sub(B12, B22));
+            M4 = strassen( // M4 = A22(B21 - B11)
+                    A22, sub(B21, B11));
+            M5 = strassen( // M5 = (A11 + A12)B22
+                    add(A11, A12), B22);
+            M6 = strassen( // M6 = (A21 - A11)(B11 + B12)
+                    sub(A21, A11), add(B11, B12));
+            M7 = strassen( // M7 = (A12 - A22)(B21 + B22)
+                    sub(A12, A22), add(B21, B22));
+        }
+
+        int[][] C11 = new int[half][half];
+        int[][] C12 = new int[half][half];
+        int[][] C21 = new int[half][half];
+        int[][] C22 = new int[half][half];
+
+        int[][] C = new int[matrixSize][matrixSize];
+
+        t = System.currentTimeMillis();
+        add(sub(add(M1, M4), M5), M7, C11); // C11 = M1 + M4 - M5 + M7
+        add(M3, M5, C12); // C12 = M3 + M5
+        add(M2, M4, C21); // C21 = M2 + M4
+        add(sub(add(M1, M3), M2), M6, C22); // C22 = M1 - M2 + M3 + M6
+        timeCalculatingC.addAndGet(System.currentTimeMillis() - t);
+
+        t = System.currentTimeMillis();
         join(C, C11, 0, 0);
-        join(C, C12, 0, newSize);
-        join(C, C21, newSize, 0);
-        join(C, C22, newSize, newSize);
+        join(C, C12, 0, half);
+        join(C, C21, half, 0);
+        join(C, C22, half, half);
+        timeJoining.addAndGet(System.currentTimeMillis() - t);
 
         return C;
+    }
+
+    //returns the amount of multiplications for a given matrix size and strassen threshold
+    // 7 ^ log2(matrixSize / strassenThreshold)
+    public static int multCount(int matrixSize, int strassenThreshold) {
+        int ratio = matrixSize / strassenThreshold;
+        int log = 0;
+        while (ratio > 1) {
+            ratio  = ratio >> 1;
+            log++;
+        }
+        return (int) Math.pow(7, log);
     }
 }
