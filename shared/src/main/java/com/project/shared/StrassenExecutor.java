@@ -1,11 +1,12 @@
 package com.project.shared;
 
+import java.io.PrintStream;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+
+import java.util.List;
 
 import static com.project.shared.MatrixUtil.add;
 import static com.project.shared.MatrixUtil.divideIntoQuadrants;
@@ -19,22 +20,60 @@ public class StrassenExecutor {
     private int strassenThreshold;
     private int threadThreshold;
     private int nThreads;
-    
-    private AtomicInteger multCounter = new AtomicInteger(0);
-    private AtomicLong timeMultiplying = new AtomicLong(0);
-    private AtomicLong timeCalculatingC = new AtomicLong(0);
-    private AtomicLong timeJoining = new AtomicLong(0);
-    private AtomicLong timeDividing = new AtomicLong(0);
 
+    private ProgressBar progressBar;
+    private boolean useProgressBar = false;
+
+    private long runTime;
+
+    /**
+     * Create a new StrassenExecutor with the given number of threads, Strassen threshold, and thread threshold
+     * 
+     * @param nThreads The number of threads to use
+     * @param strassenThreshold The Strassen threshold (below which the algorithm will use normal matrix multiplication)
+     * @param threadThreshold The thread threshold (below which the algorithm will not create new tasks)
+     */
     public StrassenExecutor(int nThreads, int strassenThreshold, int threadThreshold) {
         this.strassenThreshold = strassenThreshold;
         this.threadThreshold = threadThreshold;
         this.nThreads = nThreads;
     }
 
+    /**
+     * Run the Strassen algorithm on the given matrices A and B, and print a progress bar to the given PrintStream
+     * 
+     * @param A The first matrix
+     * @param B The second matrix
+     * @param out The PrintStream to print the progress bar to
+     * @return The resulting matrix
+     * @throws InterruptedException 
+     * @throws ExecutionException
+     * @throws IllegalArgumentException if the matrix dimensions are not square or equal, or if the matrix dimensions are not a power of 2
+     */
+    public int[][] run(int[][] A, int[][] B, PrintStream out) throws InterruptedException, ExecutionException, IllegalArgumentException {
+    
+        useProgressBar = true;
+        progressBar = new ProgressBar(multCount(A.length, strassenThreshold), 50, out);
+        progressBar.start();
+
+        return run(A, B);
+    }
+
+    /**
+     * Run the Strassen algorithm on the given matrices A and B
+     * 
+     * @param A The first matrix
+     * @param B The second matrix
+     * @return The resulting matrix
+     * @throws InterruptedException 
+     * @throws ExecutionException
+     * @throws IllegalArgumentException if the matrix dimensions are not square or equal, or if the matrix dimensions are not a power of 2
+     */
     public int[][] run(int[][] A, int[][] B) throws InterruptedException, ExecutionException, IllegalArgumentException {
-        
-        this.executor = Executors.newFixedThreadPool(nThreads);
+
+        if(nThreads > 1) {
+            this.executor = Executors.newFixedThreadPool(nThreads);
+        }
 
         int matrixSize = A.length;
 
@@ -50,31 +89,41 @@ public class StrassenExecutor {
             throw new IllegalArgumentException("Matrix dimensions must be a power of 2");
         }
 
+        long startTime = System.currentTimeMillis();
+
         int[][] res = strassen(A, B);
 
-        System.out.println("Multiplications: " + multCounter.get());
-        System.out.println("Time multiplying: " + timeMultiplying.get() + "ms");
-        System.out.println("Time calculating C: " + timeCalculatingC.get() + "ms");
-        System.out.println("Time joining: " + timeJoining.get() + "ms");
-        System.out.println("Time dividing: " + timeDividing.get() + "ms");
+        runTime = System.currentTimeMillis() - startTime;
 
-        executor.shutdown();
-
+        if(executor != null)
+            executor.shutdown();
+        
+        if(useProgressBar)
+            progressBar.stop();
+        
         return res;
     }
 
+    /**
+     * Run the Strassen algorithm on the given matrices A and B
+     * 
+     * @param A The first matrix
+     * @param B The second matrix
+     * @return The resulting matrix
+     * @throws InterruptedException 
+     * @throws ExecutionException
+     */
     public int[][] strassen(int[][] A, int[][] B) throws InterruptedException, ExecutionException {
         
         int matrixSize = A.length;
         boolean makeNewTasks = true;
         int half = matrixSize / 2;
-        long t = 0;
 
         if (matrixSize <= strassenThreshold) {
-            multCounter.incrementAndGet();
-            t = System.currentTimeMillis();
+            if(useProgressBar) {
+                progressBar.progress(1);
+            }
             int[][] res = matrixMult(A, B);
-            timeMultiplying.addAndGet(System.currentTimeMillis() - t);
             return res;
         }
 
@@ -92,11 +141,11 @@ public class StrassenExecutor {
         int[][] B21 = new int[half][half];
         int[][] B22 = new int[half][half];
 
-        t = System.currentTimeMillis();
+        //Divide matrices into quadrants
         divideIntoQuadrants(A, A11, A12, A21, A22);
         divideIntoQuadrants(B, B11, B12, B21, B22);
-        timeDividing.addAndGet(System.currentTimeMillis() - t);
 
+        //Generate the 7 new matrices
         int[][] M1 = null;
         int[][] M2 = null;
         int[][] M3 = null;
@@ -105,6 +154,7 @@ public class StrassenExecutor {
         int[][] M6 = null;
         int[][] M7 = null;
 
+        //Create new tasks for each of the 7 new matrices if the matrix size is greater than the threshold
         if(makeNewTasks) {
 
             Future<int[][]> M1f = executor.submit(() -> strassen( // M1 = (A11 + A22)(B11 + B22)
@@ -135,7 +185,8 @@ public class StrassenExecutor {
             M5 = M5f.get();
             M6 = M6f.get();
             M7 = M7f.get();
-
+        
+        //Otherwise, just run the 7 new matrices sequentially
         } else {
             M1 = strassen( // M1 = (A11 + A22)(B11 + B22)
                     add(A11, A22), add(B11, B22));
@@ -153,6 +204,7 @@ public class StrassenExecutor {
                     sub(A12, A22), add(B21, B22));
         }
 
+        //Calculate the 4 quadrants of the result matrix
         int[][] C11 = new int[half][half];
         int[][] C12 = new int[half][half];
         int[][] C21 = new int[half][half];
@@ -160,25 +212,33 @@ public class StrassenExecutor {
 
         int[][] C = new int[matrixSize][matrixSize];
 
-        t = System.currentTimeMillis();
         add(sub(add(M1, M4), M5), M7, C11); // C11 = M1 + M4 - M5 + M7
         add(M3, M5, C12); // C12 = M3 + M5
         add(M2, M4, C21); // C21 = M2 + M4
         add(sub(add(M1, M3), M2), M6, C22); // C22 = M1 - M2 + M3 + M6
-        timeCalculatingC.addAndGet(System.currentTimeMillis() - t);
 
-        t = System.currentTimeMillis();
+        //Join the 4 quadrants into the result matrix
         join(C, C11, 0, 0);
         join(C, C12, 0, half);
         join(C, C21, half, 0);
         join(C, C22, half, half);
-        timeJoining.addAndGet(System.currentTimeMillis() - t);
 
         return C;
     }
 
-    //returns the amount of multiplications for a given matrix size and strassen threshold
-    // 7 ^ log2(matrixSize / strassenThreshold)
+    public long getRunningtime() {
+        return runTime;
+    }
+
+    /**
+     * Calculate the number of matrix multiplications for a given matrix size and Strassen threshold
+     * 
+     * Equal to 7 ^ log2(matrixSize / strassenThreshold)
+     * 
+     * @param matrixSize The size of the matrix
+     * @param strassenThreshold The Strassen threshold (below which the algorithm will use normal matrix multiplication)
+     * @return The number of matrix multiplications
+     */
     public static int multCount(int matrixSize, int strassenThreshold) {
         int ratio = matrixSize / strassenThreshold;
         int log = 0;
@@ -187,5 +247,9 @@ public class StrassenExecutor {
             log++;
         }
         return (int) Math.pow(7, log);
+    }
+
+    public static List<SubTask> generateTasks(int[][] A, int[][] B) {
+
     }
 }

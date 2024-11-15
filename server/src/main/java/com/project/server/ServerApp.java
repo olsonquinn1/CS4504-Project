@@ -7,11 +7,13 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
+import com.project.shared.Data;
 import static com.project.shared.MatrixUtil.generateSquareMatrix;
 import static com.project.shared.MatrixUtil.matrixMult;
 import com.project.shared.ProfilingData;
-import com.project.shared.Data;
 import com.project.shared.ProgressBar;
 
 import javafx.application.Application;
@@ -41,11 +43,13 @@ public class ServerApp extends Application {
 
    private PrintStream log;
 
-   private int numCores = Runtime.getRuntime().availableProcessors();
+   private final int numCores = Runtime.getRuntime().availableProcessors();
 
    private double computeScore = 0;
 
    ProgressBar progressBar;
+
+   private final BlockingQueue<Data> outBuffer = new LinkedBlockingQueue<>();
 
    @FXML
    private TextField tf_addr;
@@ -94,6 +98,8 @@ public class ServerApp extends Application {
    @FXML
    public void initialize() {
 
+      setUpLogStream(ta_log);
+
       tf_addr.textProperty().addListener((observable, oldValue, newValue) -> {
          routerAddr = newValue;
       });
@@ -109,14 +115,12 @@ public class ServerApp extends Application {
          tf_port.setStyle("-fx-border-color: black");
       });
 
-      setUpLogStream(ta_log, log);
-
       new Thread(() -> {
-         //sleep thread for a few seconds to allow the window to load
+         // sleep thread for a few seconds to allow the window to load
          try {
             Thread.sleep(1000);
          } catch (InterruptedException e) {
-            e.printStackTrace();
+            log.println("Error sleeping thread: " + e.getMessage());
          }
          log.println("Profiling compute capability...");
          computeScore = profileComputeCapability();
@@ -125,8 +129,8 @@ public class ServerApp extends Application {
       }).start();
    }
 
-   private void setUpLogStream(TextArea ta, PrintStream ps) {
-      OutputStream out = new OutputStream() {
+   private void setUpLogStream(TextArea ta) {
+      OutputStream outStream = new OutputStream() {
          @Override
          public synchronized void write(int b) {
             ta.appendText(String.valueOf((char) b));
@@ -138,7 +142,7 @@ public class ServerApp extends Application {
          }
       };
 
-      ps = new PrintStream(out, true);
+      log = new PrintStream(outStream, true);
    }
 
    public void connectToRouter() throws IOException, UnknownHostException {
@@ -158,32 +162,28 @@ public class ServerApp extends Application {
       myAddr = socket.getLocalAddress().getHostAddress();
       myPort = socket.getLocalPort();
 
-      ProfilingData profileData = new ProfilingData(computeScore, numCores);
+      new Thread(this::readLoop).start();
+      new Thread(this::writeLoop).start();
+
+      ProfilingData profileData = new ProfilingData(numCores, computeScore);
 
       Data send = new Data(
-         Data.Type.PROFILE_DATA,
-         routerAddr,
-         routerPort,
-         myAddr,
-         myPort,
-         profileData
-      );
+            Data.Type.PROFILING_DATA,
+            routerAddr,
+            routerPort,
+            myAddr,
+            myPort,
+            profileData);
+
+      outBuffer.add(send);
+
+      // set addr and port fields to uneditable
+      tf_addr.setEditable(false);
+      tf_port.setEditable(false);
    }
 
-   public void disconnectFromRouter() throws IOException {
-      if (socket == null) {
-         return;
-      }
-
-      socket.close();
-
-      // set addr and port fields to editable
-      tf_addr.setEditable(true);
-      tf_port.setEditable(true);
-   }
-
-   //computes 50 matrix multiplications on two 512x512 matrices
-   //returns the average time taken to compute the multiplication
+   // computes 50 matrix multiplications on two 512x512 matrices
+   // returns the average time taken to compute the multiplication
    public double profileComputeCapability() {
 
       progressBar = new ProgressBar(50, 50, log);
@@ -203,13 +203,14 @@ public class ServerApp extends Application {
          times[i] = System.currentTimeMillis() - startTime;
          progressBar.progress(1);
       }
+      progressBar.stop();
 
       long sum = 0;
       for (long time : times) {
          sum += time;
       }
 
-      return (double)sum / numTests;
+      return (double) sum / numTests;
    }
 
    @FXML
@@ -234,7 +235,7 @@ public class ServerApp extends Application {
    @FXML
    public void disconnectButtonClicked() {
       try {
-         disconnectFromRouter();
+         closeConnections();
       } catch (IOException e) {
          lb_conn_status.setText("Error disconnecting from router");
          log.println("Error disconnecting from router");
@@ -242,5 +243,79 @@ public class ServerApp extends Application {
       }
       lb_conn_status.setText("Disconnected");
       log.println("Disconnected from router");
+   }
+
+   protected void readLoop() {
+      while (true) {
+         Data recv = null;
+         try {
+            recv = (Data) in.readObject();
+         } catch (ClassNotFoundException e) {
+            log.println("Error deserializing object from server: " + e.getMessage());
+            break;
+         } catch (IOException e) {
+            log.println("Error reading object from server: " + e.getMessage());
+            break;
+         }
+
+         if (recv == null || recv.getType() == Data.Type.CLOSE) {
+            log.println("Connection closed by server");
+            try {
+               closeConnections();
+            } catch (IOException e) {
+               log.println("Error disconnecting from router: " + e.getMessage());
+            }
+            break;
+         }
+      }
+   }
+
+   private void writeLoop() {
+      while (true) {
+         Data data = null;
+         try {
+            data = outBuffer.take();
+            out.writeObject(data);
+            out.flush();
+         } catch (InterruptedException e) {
+            log.println("Write thread interrupted: " + e.getMessage());
+            break;
+         } catch (IOException e) {
+            log.println("Error writing object to server: " + e.getMessage());
+            break;
+         }
+      }
+   }
+
+   public void closeConnections() throws IOException {
+
+      if (socket == null || socket.isClosed()) {
+         return;
+      }
+
+      // send close message
+      Data close = new Data(
+            Data.Type.CLOSE,
+            myAddr, myPort, routerAddr, routerPort,
+            null);
+
+      outBuffer.add(close);
+
+      //sleep thread to allow message to be sent
+      try {
+         Thread.sleep(1000);
+      } catch (InterruptedException e) {
+         log.println("Error sleeping thread: " + e.getMessage());
+      }
+
+      out.close();
+      in.close();
+      socket.close();
+
+      log.println("Disconnected from router");
+
+      // set addr and port fields to editable
+      tf_addr.setEditable(true);
+      tf_port.setEditable(true);
    }
 }

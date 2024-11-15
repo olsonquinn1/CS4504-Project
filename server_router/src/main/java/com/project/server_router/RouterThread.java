@@ -3,8 +3,13 @@ package com.project.server_router;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.net.Socket;
 import java.util.List;
+
+import com.project.shared.Data;
+
+import javafx.application.Platform;
 
 public abstract class RouterThread extends Thread {
 
@@ -32,4 +37,18 @@ public abstract class RouterThread extends Thread {
 		myConnection = new Connection(socket, isServer, this);
 		routingTable.add(myConnection);
 	}
+
+	public void closeConnection() throws IOException {
+		myConnection.close();
+		routingTable.remove(myConnection);
+		Platform.runLater(() -> routerApp.updateConnectionLists());
+	}
+
+    protected Data createData(Data.Type type, Serializable data) {
+        return new Data(
+            type, myConnection.getAddr(), myConnection.getPort(),
+            socket.getInetAddress().getHostAddress(), socket.getPort(),
+            data
+        );
+    }
 }

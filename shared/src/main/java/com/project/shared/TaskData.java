@@ -3,31 +3,26 @@ package com.project.shared;
 import java.io.Serializable;
 
 public class TaskData implements Serializable {
-    private final int taskId;
-    private final MatrixData matrixA;
-    private final MatrixData matrixB;
-    private final boolean useStrassen;
 
-    public TaskData(int taskId, MatrixData matrixA, MatrixData matrixB, boolean useStrassen) {
-        this.taskId = taskId;
+    private final int[][] matrixA;
+    private final int[][] matrixB;
+    private final int matrixSize;
+
+    public TaskData(int[][] matrixA, int[][] matrixB, int matrixSize) {
         this.matrixA = matrixA;
         this.matrixB = matrixB;
-        this.useStrassen = useStrassen;
+        this.matrixSize = matrixSize;
     }
 
-    public int getTaskId() {
-        return taskId;
-    }
-
-    public MatrixData getMatrixA() {
+    public int[][] getMatrixA() {
         return matrixA;
     }
 
-    public MatrixData getMatrixB() {
+    public int[][] getMatrixB() {
         return matrixB;
     }
 
-    public boolean isUseStrassen() {
-        return useStrassen;
+    public int getMatrixSize() {
+        return matrixSize;
     }
 }

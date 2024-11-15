@@ -145,8 +145,12 @@ public class MatrixUtil {
         int n_rows = A.length;
         int n_cols = A[0].length;
 
-        if (x + n_rows >= C.length || y + n_cols >= C[0].length) {
-            throw new IllegalArgumentException("Matrix does not fit in specified position");
+        if (x + n_rows > C.length || y + n_cols > C[0].length) {
+            throw new IllegalArgumentException(
+                "Matrix does not fit in specified position: "
+                + "x: " + x + ", y: " + y + ", n_rows: " + n_rows + ", n_cols: " + n_cols
+                + "\nC: " + C.length + "x" + C[0].length
+            );
         }
 
         for (int i = 0; i < n_rows; i++) {
@@ -163,7 +167,11 @@ public class MatrixUtil {
         int n_cols = A[0].length;
 
         if (x + n_rows > C.length || y + n_cols > C[0].length) {
-            throw new IllegalArgumentException("Matrix does not fit in specified position");
+            throw new IllegalArgumentException(
+                "Matrix does not fit in specified position: "
+                + "x: " + x + ", y: " + y + ", n_rows: " + n_rows + ", n_cols: " + n_cols
+                + "\nC: " + C.length + "x" + C[0].length
+            );
         }
 
         for (int i = 0; i < n_rows; i++) {

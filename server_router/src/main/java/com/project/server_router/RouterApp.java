@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.ServerSocket;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,156 +17,216 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.stage.Stage;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
-import javafx.scene.control.Label;
+import javafx.stage.Stage;
 
 public class RouterApp extends Application {
 
-   private final int serverPort = 5555;
-   private final int clientPort = 5556;
+    private final int serverPort = 5555;
+    private final int clientPort = 5556;
 
-   private ServerSocket listenSocket_server = null;
-   private ServerSocket listenSocket_client = null;
+    private ServerSocket listenSocket_server = null;
+    private ServerSocket listenSocket_client = null;
 
-   private final List<Connection> routingTable = Collections.synchronizedList(new ArrayList<Connection>());;
+    private final List<Connection> routingTable = Collections.synchronizedList(new ArrayList<>());;
 
-   private ListenThread clientListener = null;
-   private ListenThread serverListener = null;
+    private ListenThread clientListener = null;
+    private ListenThread serverListener = null;
 
-   private Stage primaryStage;
+    private Stage primaryStage;
 
-   private PrintStream log;
+    private PrintStream log;
 
-   @FXML
-   private TextArea ta_log;
-   @FXML
-   private Label lb_conn_status;
-   @FXML
-   private ListView<String> lv_servers;
-   @FXML
-   private ListView<String> lv_clients;
+    private int taskCounter = 0;
 
-   public static void main(String[] args) throws IOException {
-      launch(args);
-   }
+    @FXML
+    private TextArea ta_log;
+    @FXML
+    private Label lb_conn_status;
+    @FXML
+    private ListView<String> lv_servers;
+    @FXML
+    private ListView<String> lv_clients;
 
-   @Override
-   public void start(Stage stage) {
+    public static void main(String[] args) throws IOException {
+        launch(args);
+    }
 
-      FXMLLoader loader = new FXMLLoader(getClass().getResource("/router.fxml"));
-      try {
-         Parent root = loader.load();
-         Scene scene = new Scene(root);
-         primaryStage = stage;
-         primaryStage.setTitle("Router");
-         primaryStage.setScene(scene);
-         primaryStage.setOnCloseRequest(event -> {
-            closeConnections();
-            Platform.exit();
-            System.exit(0);
-         });
-         primaryStage.show();
-      } catch (IOException e) {
-         e.printStackTrace();
-         System.exit(1);
-      }
-   }
+    @Override
+    public void start(Stage stage) {
 
-   @FXML
-   private void initialize() {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/router.fxml"));
+        try {
+            Parent root = loader.load();
+            Scene scene = new Scene(root);
+            primaryStage = stage;
+            primaryStage.setTitle("Router");
+            primaryStage.setScene(scene);
+            primaryStage.setOnCloseRequest(event -> {
+                closeConnections();
+                Platform.exit();
+                System.exit(0);
+            });
+            primaryStage.show();
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
 
-      setUpLogStream(ta_log, log);
+    @FXML
+    private void initialize() {
 
-      startListener(serverListener, listenSocket_server, serverPort, true);
-      startListener(clientListener, listenSocket_client, clientPort, false);
-   }
+        setUpLogStream(ta_log);
 
-   // sets up the listener thread
-   private void startListener(ListenThread listener, ServerSocket serverSocket, int port, boolean isServer) {
+        startListener(serverListener, listenSocket_server, serverPort, true);
+        startListener(clientListener, listenSocket_client, clientPort, false);
+    }
 
-      if(serverSocket == null) {
-         try {
-            serverSocket = new ServerSocket(port);
-         } catch (IOException e) {
+    // sets up the listener thread
+    private void startListener(ListenThread listener, ServerSocket serverSocket, int port, boolean isServer) {
+
+        if (serverSocket == null) {
+            try {
+                serverSocket = new ServerSocket(port);
+            } catch (IOException e) {
+                System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
+                e.printStackTrace();
+                System.exit(1);
+            }
+        }
+
+        try {
+
+            if (listener != null)
+                listener.interrupt();
+
+            listener = new ListenThread(serverSocket, routingTable, this, isServer);
+            listener.start();
+        } catch (IOException e) {
             System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
             e.printStackTrace();
             System.exit(1);
-         }
-      }
+        }
 
-      try {
+        log.println("Listener started on port: " + port);
+    }
 
-         if (listener != null)
-            listener.interrupt();
+    public synchronized void updateConnectionLists() {
 
-         listener = new ListenThread(serverSocket, routingTable, this, isServer);
-         listener.start();
-      } catch (IOException e) {
-         System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
-         e.printStackTrace();
-         System.exit(1);
-      }
+        ObservableList<String> servers = FXCollections.observableArrayList(
+                routingTable.stream()
+                        .filter(conn -> conn.isServer())
+                        .map(conn ->
+                            conn.getAddr() + ":" + conn.getPort()
+                            + "(" + conn.getLogicalCores() + ", " + conn.speedRating + ")"
+                            + (conn.isInUse() ? " (in use: " + conn.getTaskId() + ")" : "")
+                        )
+                        .collect(Collectors.toList()));
 
-      log.println("Listener started on port: " + port);
-   }
+        ObservableList<String> clients = FXCollections.observableArrayList(
+                routingTable.stream()
+                        .filter(conn -> !conn.isServer())
+                        .map(conn -> conn.getAddr() + ":" + conn.getPort())
+                        .collect(Collectors.toList()));
 
-   public synchronized void updateConnectionLists() {
+        lv_servers.setItems(servers);
+        lv_clients.setItems(clients);
 
-      ObservableList<String> servers =
-         FXCollections.observableArrayList(
-            routingTable.stream()
-            .filter(conn -> conn.isServer())
-            .map(conn -> conn.getAddr() + ":" + conn.getPort() + "(" + conn.getLogicalCores() + ")")
-            .collect(Collectors.toList())
-         );
+        lv_servers.refresh();
+        lv_clients.refresh();
+    }
 
-      ObservableList<String> clients =
-         FXCollections.observableArrayList(
-            routingTable.stream()
-            .filter(conn -> !conn.isServer())
-            .map(conn -> conn.getAddr() + ":" + conn.getPort())
-            .collect(Collectors.toList())
-         );
+    private void setUpLogStream(TextArea ta) {
+        OutputStream out = new OutputStream() {
+            @Override
+            public synchronized void write(int b) {
+                ta.appendText(String.valueOf((char) b));
+            }
 
-      lv_servers.setItems(servers);
-      lv_clients.setItems(clients);
+            @Override
+            public synchronized void write(byte[] b, int off, int len) {
+                ta.appendText(new String(b, off, len));
+            }
+        };
 
-      lv_servers.refresh();
-      lv_clients.refresh();
-   }
+        log = new PrintStream(out, true);
+    }
 
-   private void setUpLogStream(TextArea ta, PrintStream ps) {
-      OutputStream out = new OutputStream() {
-         @Override
-         public synchronized void write(int b) {
-            ta.appendText(String.valueOf((char) b));
-         }
+    public void writeToConsole(String s) {
+        log.println(s);
+    }
 
-         @Override
-         public synchronized void write(byte[] b, int off, int len) {
-            ta.appendText(new String(b, off, len));
-         }
-      };
+    /**
+     * Reserves servers for a task to meet the required number of cores. Servers with higher speed ratings are preferred.
+     * 
+     * @param threadCount number of cores required
+     * @return taskId
+     * @throws IOException if no servers are available or not enough cores are available
+     */
+    public synchronized int allocateServers(int threadCount) throws IOException {
 
-      ps = new PrintStream(out, true);
-   }
+        //collect all available servers (inUse == false)
+        List<Connection> availableServers = routingTable.stream()
+                .filter(conn -> conn.isServer())
+                .filter(conn -> !conn.isInUse())
+                .collect(Collectors.toList());
 
-   public void writeToConsole(String s) {
-      log.println(s);
-   }
+        if (availableServers.isEmpty()) {
+            throw new IOException("No servers available");
+        }
 
-   private void closeConnections() {
-      try {
-         if(listenSocket_server != null)
-            listenSocket_server.close();
-         if(listenSocket_client != null)
-            listenSocket_client.close();
-      } catch (IOException e) {
-         System.err.println("Error closing server and client sockets.");
-         e.printStackTrace();
-         System.exit(1);
-      }
-   }
+        //check if enough cores are available
+        int availableCores = availableServers.stream().mapToInt(Connection::getLogicalCores).sum();
+
+        if (availableCores < threadCount) {
+            throw new IOException("Not enough cores available");
+        }
+
+        //sort by speed rating
+        availableServers.sort((a, b) -> Double.compare(a.speedRating, b.speedRating));
+
+        //select servers until enough cores are allocated
+        List<Connection> selectedServers = new ArrayList<>();
+        int usedCores = 0;
+
+        for(int i = 0; i < availableServers.size(); i++) {
+            Connection server = availableServers.get(i);
+            if(server.isInUse()) {
+                continue;
+            }
+            selectedServers.add(server);
+            int cores = server.getLogicalCores();
+            usedCores += cores;
+
+            if(usedCores >= threadCount) {
+                break;
+            }
+        }
+
+        int taskId = taskCounter++;
+
+        for(Connection server : selectedServers) {
+            server.setInUse(true);
+            server.setTaskId(taskId);
+        }
+
+        updateConnectionLists();
+
+        return taskId;
+    }
+
+    private void closeConnections() {
+        try {
+            if (listenSocket_server != null)
+                listenSocket_server.close();
+            if (listenSocket_client != null)
+                listenSocket_client.close();
+        } catch (IOException e) {
+            System.err.println("Error closing server and client sockets.");
+            System.exit(1);
+        }
+    }
 }

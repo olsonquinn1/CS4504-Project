@@ -6,25 +6,26 @@ public class Test {
     
     public static void main(String[] args) {
 
-        int n = 4096;
+        int n = 2048;
+
+        int thread_count = Runtime.getRuntime().availableProcessors();
 
         StrassenExecutor se = new StrassenExecutor(
-            Runtime.getRuntime().availableProcessors(),
+            1,
             64,
-            n/2
+            n
         );
 
         int[][] A = generateSquareMatrix(n);
         int[][] B = generateSquareMatrix(n);
 
         System.out.println("Matrix size: " + n + "x" + n);
-        long startTime = System.currentTimeMillis();
+
         try {
-            se.run(A, B);
+            se.run(A, B, System.out);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        long parTime = System.currentTimeMillis() - startTime;
-        System.out.println(parTime + "ms");
+        System.out.println(se.getRunningtime() + "ms");
     }
 }

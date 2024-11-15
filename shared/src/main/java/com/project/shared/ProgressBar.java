@@ -22,8 +22,10 @@ public class ProgressBar {
 
     public void start() {
         reset();
-        write("" + progressPerBar + "\n");
-        writeIndicatorBar();
+    }
+
+    public void stop() {
+        write("\n");
     }
 
     private void writeIndicatorBar() {
@@ -39,17 +41,20 @@ public class ProgressBar {
     public void reset() {
         currentProgress = 0;
         currentBarProgress = 0;
+        writeIndicatorBar();
     }
 
     public synchronized void progress(int amount) {
         currentBarProgress += amount;
+
+        if(currentBarProgress >= maxProgress) {
+            return;
+        }
+
         while (currentBarProgress >= progressPerBar && currentProgress < maxProgress) {
             currentProgress += progressPerBar;
             currentBarProgress -= progressPerBar;
             write("\u2588");
-        }
-        if(currentProgress >= maxProgress) {
-            write("\n");
         }
     }
 

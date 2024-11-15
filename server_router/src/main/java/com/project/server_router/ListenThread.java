@@ -36,7 +36,6 @@ public class ListenThread extends Thread {
                     + ": " + incomingSocket.getInetAddress().getHostAddress()
                     + ":" + incomingSocket.getPort()
                 );
-                routerApp.updateConnectionLists();
             }
         } catch (IOException e) {
             routerApp.writeToConsole("ListenThread: connection failed, " + e.getMessage());

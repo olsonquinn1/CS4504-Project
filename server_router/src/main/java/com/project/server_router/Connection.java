@@ -13,7 +13,12 @@ public class Connection {
 
     private final String addr;
     private final int port;
-    private final int logicalCores;
+    public int logicalCores;
+    public double speedRating;
+
+    private boolean inUse = false;
+    private int taskId = -1;
+    private int allocatedCores = 0;
 
     private final RouterThread myThread;
 
@@ -60,6 +65,30 @@ public class Connection {
 
     public boolean isServer() {
         return isServer;
+    }
+
+    public boolean isInUse() {
+        return inUse;
+    }
+
+    public void setInUse(boolean inUse) {
+        this.inUse = inUse;
+    }
+
+    public int getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(int taskId) {
+        this.taskId = taskId;
+    }
+
+    public int getAllocatedCores() {
+        return allocatedCores;
+    }
+
+    public void setAllocatedCores(int allocatedCores) {
+        this.allocatedCores = allocatedCores;
     }
 
     public boolean equals(String addr, int port) {

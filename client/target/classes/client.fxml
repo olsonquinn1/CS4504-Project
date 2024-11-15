@@ -17,17 +17,15 @@
       <Label layoutX="14.0" layoutY="73.0" text="Port" />
       <Label fx:id="lb_conn_status" layoutX="15.0" layoutY="102.0" prefHeight="137.0" prefWidth="265.0" style="-fx-border-color: #000000;" />
       <Button fx:id="btn_disconnect" layoutX="200.0" layoutY="69.0" mnemonicParsing="false" onAction="#disconnectButtonClicked" prefHeight="25.0" prefWidth="80.0" text="Disconnect" />
-      <TextArea fx:id="ta_log" editable="false" layoutX="287.0" layoutY="6.0" prefHeight="387.0" prefWidth="307.0">
+      <TextArea fx:id="ta_log" editable="false" layoutX="287.0" layoutY="6.0" prefHeight="387.0" prefWidth="307.0" wrapText="true">
          <font>
             <Font name="Consolas" size="10.0" />
          </font>
       </TextArea>
       <Label layoutX="15.0" layoutY="256.0" text="Matrix Size" />
       <ChoiceBox fx:id="cb_mat_size" layoutX="99.0" layoutY="252.0" prefHeight="25.0" prefWidth="181.0" />
-      <Label layoutX="15.0" layoutY="293.0" text="Matrix Count" />
-      <Label layoutX="15.0" layoutY="329.0" text="Thread Count" />
-      <TextField fx:id="tf_mat_count" layoutX="99.0" layoutY="289.0" prefHeight="25.0" prefWidth="181.0" />
-      <TextField fx:id="tf_thread_count" layoutX="99.0" layoutY="325.0" prefHeight="25.0" prefWidth="181.0" />
-      <Button layoutX="97.0" layoutY="361.0" mnemonicParsing="false" text="Send Request" />
+      <Label layoutX="15.0" layoutY="294.0" text="Thread Count" />
+      <Button layoutX="97.0" layoutY="361.0" mnemonicParsing="false" onAction="#sendButtonClicked" text="Send Request" />
+      <ChoiceBox fx:id="cb_thread_count" layoutX="99.0" layoutY="290.0" prefHeight="25.0" prefWidth="181.0" />
    </children>
 </AnchorPane>

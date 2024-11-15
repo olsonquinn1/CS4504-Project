@@ -8,10 +8,9 @@ public class Data implements Serializable {
         REQUEST,
         RESPONSE,
         CLOSE,
-        PING,
-        MATRIX_DATA,
         TASK_DATA,
-        PROFILING_DATA
+        PROFILING_DATA,
+        RESULT_DATA
     }
 
     private final Type type;
