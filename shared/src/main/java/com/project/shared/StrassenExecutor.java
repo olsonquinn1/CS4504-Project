@@ -1,12 +1,11 @@
 package com.project.shared;
 
 import java.io.PrintStream;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-
-import java.util.List;
 
 import static com.project.shared.MatrixUtil.add;
 import static com.project.shared.MatrixUtil.divideIntoQuadrants;
@@ -14,15 +13,20 @@ import static com.project.shared.MatrixUtil.join;
 import static com.project.shared.MatrixUtil.matrixMult;
 import static com.project.shared.MatrixUtil.sub;
 
+/**
+ * A class to execute the Strassen algorithm on two matrices in parallel
+ */
 public class StrassenExecutor {
 
     private ExecutorService executor;
-    private int strassenThreshold;
-    private int threadThreshold;
-    private int nThreads;
+    private final int strassenThreshold;
+    private final int nThreads;
 
     private ProgressBar progressBar;
     private boolean useProgressBar = false;
+
+    private final Object activeTasksLock = new Object();
+    private int activeTasks;
 
     private long runTime;
 
@@ -31,12 +35,12 @@ public class StrassenExecutor {
      * 
      * @param nThreads The number of threads to use
      * @param strassenThreshold The Strassen threshold (below which the algorithm will use normal matrix multiplication)
-     * @param threadThreshold The thread threshold (below which the algorithm will not create new tasks)
+     * @param maxTasks The maximum number of tasks to run in parallel
      */
-    public StrassenExecutor(int nThreads, int strassenThreshold, int threadThreshold) {
+    public StrassenExecutor(int nThreads, int strassenThreshold) {
         this.strassenThreshold = strassenThreshold;
-        this.threadThreshold = threadThreshold;
         this.nThreads = nThreads;
+        this.activeTasks = 0;
     }
 
     /**
@@ -71,9 +75,7 @@ public class StrassenExecutor {
      */
     public int[][] run(int[][] A, int[][] B) throws InterruptedException, ExecutionException, IllegalArgumentException {
 
-        if(nThreads > 1) {
-            this.executor = Executors.newFixedThreadPool(nThreads);
-        }
+        this.executor = Executors.newFixedThreadPool(nThreads);
 
         int matrixSize = A.length;
 
@@ -116,7 +118,6 @@ public class StrassenExecutor {
     public int[][] strassen(int[][] A, int[][] B) throws InterruptedException, ExecutionException {
         
         int matrixSize = A.length;
-        boolean makeNewTasks = true;
         int half = matrixSize / 2;
 
         if (matrixSize <= strassenThreshold) {
@@ -125,10 +126,6 @@ public class StrassenExecutor {
             }
             int[][] res = matrixMult(A, B);
             return res;
-        }
-
-        if (matrixSize <= threadThreshold) {
-            makeNewTasks = false;
         }
 
         int[][] A11 = new int[half][half];
@@ -145,7 +142,6 @@ public class StrassenExecutor {
         divideIntoQuadrants(A, A11, A12, A21, A22);
         divideIntoQuadrants(B, B11, B12, B21, B22);
 
-        //Generate the 7 new matrices
         int[][] M1 = null;
         int[][] M2 = null;
         int[][] M3 = null;
@@ -154,54 +150,26 @@ public class StrassenExecutor {
         int[][] M6 = null;
         int[][] M7 = null;
 
-        //Create new tasks for each of the 7 new matrices if the matrix size is greater than the threshold
-        if(makeNewTasks) {
-
-            Future<int[][]> M1f = executor.submit(() -> strassen( // M1 = (A11 + A22)(B11 + B22)
-                    add(A11, A22), add(B11, B22)));
-
-            Future<int[][]> M2f = executor.submit(() -> strassen( // M2 = (A21 + A22)B11
-                    add(A21, A22), B11));
-
-            Future<int[][]> M3f = executor.submit(() -> strassen( // M3 = A11(B12 - B22)
-                    A11, sub(B12, B22)));
-
-            Future<int[][]> M4f = executor.submit(() -> strassen( // M4 = A22(B21 - B11)
-                    A22, sub(B21, B11)));
-
-            Future<int[][]> M5f = executor.submit(() -> strassen( // M5 = (A11 + A12)B22
-                    add(A11, A12), B22));
-
-            Future<int[][]> M6f = executor.submit(() -> strassen( // M6 = (A21 - A11)(B11 + B12)
-                    sub(A21, A11), add(B11, B12)));
-
-            Future<int[][]> M7f = executor.submit(() -> strassen( // M7 = (A12 - A22)(B21 + B22)
-                    sub(A12, A22), add(B21, B22)));
-
-            M1 = M1f.get();
-            M2 = M2f.get();
-            M3 = M3f.get();
-            M4 = M4f.get();
-            M5 = M5f.get();
-            M6 = M6f.get();
-            M7 = M7f.get();
-        
-        //Otherwise, just run the 7 new matrices sequentially
-        } else {
-            M1 = strassen( // M1 = (A11 + A22)(B11 + B22)
-                    add(A11, A22), add(B11, B22));
-            M2 = strassen( // M2 = (A21 + A22)B11
-                    add(A21, A22), B11);
-            M3 = strassen( // M3 = A11(B12 - B22)
-                    A11, sub(B12, B22));
-            M4 = strassen( // M4 = A22(B21 - B11)
-                    A22, sub(B21, B11));
-            M5 = strassen( // M5 = (A11 + A12)B22
-                    add(A11, A12), B22);
-            M6 = strassen( // M6 = (A21 - A11)(B11 + B12)
-                    sub(A21, A11), add(B11, B12));
-            M7 = strassen( // M7 = (A12 - A22)(B21 + B22)
-                    sub(A12, A22), add(B21, B22));
+        //Generate the 7 new matrices
+        Future<int[][]> M1f = createTaskIfNeeded(() -> strassen(add(A11, A22), add(B11, B22)));
+        Future<int[][]> M2f = createTaskIfNeeded(() -> strassen(add(A21, A22), B11));
+        Future<int[][]> M3f = createTaskIfNeeded(() -> strassen(A11, sub(B12, B22)));
+        Future<int[][]> M4f = createTaskIfNeeded(() -> strassen(A22, sub(B21, B11)));
+        Future<int[][]> M5f = createTaskIfNeeded(() -> strassen(add(A11, A12), B22));
+        Future<int[][]> M6f = createTaskIfNeeded(() -> strassen(sub(A21, A11), add(B11, B12)));
+        Future<int[][]> M7f = createTaskIfNeeded(() -> strassen(sub(A12, A22), add(B21, B22)));
+    
+        //Extract results and manage active task count
+        try {
+            M1 = extractResult(M1f, () -> strassen(add(A11, A22), add(B11, B22)));
+            M2 = extractResult(M2f, () -> strassen(add(A21, A22), B11));
+            M3 = extractResult(M3f, () -> strassen(A11, sub(B12, B22)));
+            M4 = extractResult(M4f, () -> strassen(A22, sub(B21, B11)));
+            M5 = extractResult(M5f, () -> strassen(add(A11, A12), B22));
+            M6 = extractResult(M6f, () -> strassen(sub(A21, A11), add(B11, B12)));
+            M7 = extractResult(M7f, () -> strassen(sub(A12, A22), add(B21, B22)));
+        } catch (Exception e) {
+            throw new ExecutionException(e);
         }
 
         //Calculate the 4 quadrants of the result matrix
@@ -226,6 +194,30 @@ public class StrassenExecutor {
         return C;
     }
 
+    private Future<int[][]> createTaskIfNeeded(Callable<int[][]> task) {
+        synchronized (activeTasksLock) {
+            if (activeTasks < nThreads) {
+                activeTasks++;
+                return executor.submit(task);
+            }
+        }
+        return null; // Run sequentially if too many active tasks
+    }
+
+    private int[][] extractResult(Future<int[][]> future, Callable<int[][]> sequentialTask) throws Exception {
+        if (future != null) {
+            try {
+                return future.get();
+            } finally {
+                synchronized (activeTasksLock) {
+                    activeTasks--;
+                }
+            }
+        } else {
+            return sequentialTask.call();
+        }
+    }
+
     public long getRunningtime() {
         return runTime;
     }
@@ -247,9 +239,5 @@ public class StrassenExecutor {
             log++;
         }
         return (int) Math.pow(7, log);
-    }
-
-    public static List<SubTask> generateTasks(int[][] A, int[][] B) {
-
     }
 }

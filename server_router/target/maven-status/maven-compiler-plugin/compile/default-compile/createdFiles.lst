@@ -1,3 +1,4 @@
+com\project\server_router\ClientThread$STATE.class
 com\project\server_router\RouterThread.class
 com\project\server_router\Connection.class
 com\project\server_router\ListenThread.class

@@ -5,15 +5,26 @@ import static com.project.shared.MatrixUtil.generateSquareMatrix;
 public class Test {
     
     public static void main(String[] args) {
+        //args[0] = matrix size
+        //args[1] = thread count
+        //args[2] = threshold
+        //args[3] = task count
 
-        int n = 2048;
+        //validate args
+        if (args.length != 4) {
+            System.out.println("Usage: java Test <matrix size> <thread count> <threshold>");
+            System.exit(1);
+        }
 
-        int thread_count = Runtime.getRuntime().availableProcessors();
+        int n = Integer.parseInt(args[0]);
+        int thread_count = Integer.parseInt(args[1]);
+        int threshold = Integer.parseInt(args[2]);
+
+        //int thread_count = Runtime.getRuntime().availableProcessors();
 
         StrassenExecutor se = new StrassenExecutor(
-            1,
-            64,
-            n
+            thread_count,
+            threshold
         );
 
         int[][] A = generateSquareMatrix(n);

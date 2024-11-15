@@ -223,7 +223,6 @@ public class ClientApp extends Application {
 
                 Data data = new Data(
                     Data.Type.TASK_DATA,
-                    myAddr, myPort, routerAddr, routerPort,
                     task
                 );
 
@@ -312,7 +311,6 @@ public class ClientApp extends Application {
             //send close message
             Data close = new Data(
                 Data.Type.CLOSE,
-                myAddr, myPort, routerAddr, routerPort,
                 null
             );
 
@@ -384,7 +382,6 @@ public class ClientApp extends Application {
 
         Data data = new Data(
             Data.Type.REQUEST,
-            myAddr, myPort, routerAddr, routerPort,
             req
         );
 

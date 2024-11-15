@@ -11,12 +11,10 @@ public class ResponseData implements Serializable {
 
     private String message;
     private boolean success;
-    private int taskId;
 
     public ResponseData(String message, boolean success, int taskId) {
         this.message = message;
         this.success = success;
-        this.taskId = taskId;
     }
 
     public String getMessage() {
@@ -26,9 +24,4 @@ public class ResponseData implements Serializable {
     public boolean isSuccess() {
         return success;
     }
-
-    public int getTaskId() {
-        return taskId;
-    }
-
 }

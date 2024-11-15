@@ -3,11 +3,8 @@ package com.project.server_router;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 import java.net.Socket;
 import java.util.List;
-
-import com.project.shared.Data;
 
 import javafx.application.Platform;
 
@@ -27,7 +24,7 @@ public abstract class RouterThread extends Thread {
 	protected final Socket socket;
 
 	// Constructor
-	public RouterThread(Socket socket, List<Connection> routingTable, boolean isServer, RouterApp routerApp) throws IOException {
+	protected RouterThread(Socket socket, List<Connection> routingTable, boolean isServer, RouterApp routerApp) throws IOException {
 		this.socket = socket;
 		this.routerApp = routerApp;
 		out = new ObjectOutputStream(socket.getOutputStream());
@@ -43,12 +40,4 @@ public abstract class RouterThread extends Thread {
 		routingTable.remove(myConnection);
 		Platform.runLater(() -> routerApp.updateConnectionLists());
 	}
-
-    protected Data createData(Data.Type type, Serializable data) {
-        return new Data(
-            type, myConnection.getAddr(), myConnection.getPort(),
-            socket.getInetAddress().getHostAddress(), socket.getPort(),
-            data
-        );
-    }
 }
