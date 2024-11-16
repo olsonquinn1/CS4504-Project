@@ -31,7 +31,7 @@ public abstract class RouterThread extends Thread {
 		in = new ObjectInputStream(socket.getInputStream());
 		this.routingTable = routingTable;
 		this.isServer = isServer;
-		myConnection = new Connection(socket, isServer, this);
+		myConnection = new Connection(socket, isServer, this, routerApp.connectionCounter.getAndIncrement());
 		routingTable.add(myConnection);
 	}
 

@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.project.shared.Data;
 import com.project.shared.ProfilingData;
+import com.project.shared.ResultData;
 
 public class ServerThread extends RouterThread {
     
@@ -31,17 +32,35 @@ public class ServerThread extends RouterThread {
         try {
             recv = (Data) in.readObject();
         } catch (ClassNotFoundException e) {
-            routerApp.writeToConsole("ServerThread: Failed to deserialize message from server");
+            log("Failed to deserialize message from server");
+            try {
+                closeConnection();
+            } catch (IOException ex) {
+                log("Failed to close connection");
+            }
+            return;
         } catch (IOException e) {
-            routerApp.writeToConsole("ServerThread: Failed to receive message from server");
+            log("Failed to receive message from server");
+            try {
+                closeConnection();
+            } catch (IOException ex) {
+                log("Failed to close connection");
+            }
+            return;
         }
 
         if(recv != null && recv.getType() == Data.Type.PROFILING_DATA) {
             ProfilingData data = (ProfilingData)recv.getData();
-            myConnection.logicalCores = data.getCoreCount();
-            myConnection.speedRating = data.getSpeedRating();
+            myConnection.setLogicalCores(data.getCoreCount());
+            myConnection.setSpeedRating(data.getSpeedRating());
         } else {
-            routerApp.writeToConsole("ServerThread: Failed to receive profiling data from server");
+            log("Failed to receive profiling data from server");
+            try {
+                closeConnection();
+            } catch (IOException e) {
+                log("Failed to close connection");
+            }
+            return;
         }
 
         routerApp.updateConnectionLists();
@@ -57,25 +76,25 @@ public class ServerThread extends RouterThread {
     private void dataQueueLoop() {
         while (true) { 
             //wait for data in dataqueue
-            Data recvData = null;
+            Data recv = null;
 
             try {
-                recvData = myConnection.dataQueue.take();
+                recv = myConnection.dataQueue.take();
             } catch (InterruptedException e) {
-                routerApp.writeToConsole("ServerThread: Failed to take data from queue");
+                log("Failed to take data from queue");
             }
 
-            if(recvData == null || recvData.getType() == Data.Type.CLOSE) {
+            if(recv == null || recv.getType() == Data.Type.CLOSE) {
                 break;
             }
 
-            else if(recvData.getType() == Data.Type.SUBTASK_DATA) {
+            else if(recv.getType() == Data.Type.SUBTASK_DATA) {
                 //forward data to server
                 try {
-                    out.writeObject(recvData);
+                    out.writeObject(recv);
                     out.flush();
                 } catch (IOException e) {
-                    routerApp.writeToConsole("ServerThread: Failed to send data to server");
+                    log("Failed to send data to server");
                 }
             }
         }
@@ -93,9 +112,11 @@ public class ServerThread extends RouterThread {
             try {
                 recv = (Data) in.readObject();
             } catch (ClassNotFoundException e) {
-                routerApp.writeToConsole("ServerThread: Failed to deserialize message from server");
+                log("Failed to deserialize message from server");
+                continue;
             } catch (IOException e) {
-                routerApp.writeToConsole("ServerThread: Failed to receive message from server");
+                log("Failed to receive message from server");
+                continue;
             }
 
             if(recv == null || recv.getType() == Data.Type.CLOSE) {
@@ -103,7 +124,7 @@ public class ServerThread extends RouterThread {
             }
 
             else if(recv.getType() == Data.Type.RESULT_DATA) {
-                
+                handleResult((ResultData)recv.getData());
             }
         }
         handleClose();
@@ -116,9 +137,38 @@ public class ServerThread extends RouterThread {
         try {
             closeConnection();
         } catch (IOException e) {
-            routerApp.writeToConsole("ServerThread: Failed to close connection");
+            log("Failed to close connection");
         }
-        routerApp.writeToConsole("ServerThread: Connection closed by server");
+        log("Connection closed by server");
     }
 
+    private void handleResult(ResultData result) {
+        
+        int taskId = result.getTaskId();
+
+        //find client with task id
+        Connection client = null;
+        for(Connection c : routingTable) {
+            if(!c.isServer() && c.hasTaskId(taskId)) {
+                client = c;
+                break;
+            }
+        }
+
+        if(client == null) {
+            log("Failed to find client with task id");
+            return;
+        }
+
+        //forward result to client
+        try {
+            client.dataQueue.put(new Data(Data.Type.RESULT_DATA, result));
+        } catch (InterruptedException e) {
+            log("Failed to forward result to client");
+        }
+    }
+
+    private void log(String message) {
+        routerApp.writeToConsole("ServerThread " + myConnection.getId() + ": " + message);
+    }
 }

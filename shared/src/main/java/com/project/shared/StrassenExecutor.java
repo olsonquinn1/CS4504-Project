@@ -100,8 +100,11 @@ public class StrassenExecutor {
         if(executor != null)
             executor.shutdown();
         
-        if(useProgressBar)
+        if(useProgressBar) {
             progressBar.stop();
+            useProgressBar = false;
+        }
+            
         
         return res;
     }
@@ -216,6 +219,102 @@ public class StrassenExecutor {
         } else {
             return sequentialTask.call();
         }
+    }
+
+    //submatrices = {a11, a12, a21, a22, b11, b12, b21, b22}
+    public static int[][][] stras_M1(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = add(submatrices[0], submatrices[3]);
+        res[1] = add(submatrices[4], submatrices[7]);
+
+        return res;
+    }
+
+    public static int[][][] stras_M2(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = add(submatrices[2], submatrices[3]);
+        res[1] = submatrices[4];
+
+        return res;
+    }
+
+    public static int[][][] stras_M3(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = submatrices[0];
+        res[1] = sub(submatrices[5], submatrices[7]);
+
+        return res;
+    }
+
+    public static int[][][] stras_M4(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = submatrices[3];
+        res[1] = add(submatrices[5], submatrices[7]);
+
+        return res;
+    }
+
+    public static int[][][] stras_M5(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = add(submatrices[0], submatrices[1]);
+        res[1] = submatrices[7];
+
+        return res;
+    }
+
+    public static int[][][] stras_M6(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = sub(submatrices[2], submatrices[0]);
+        res[1] = add(submatrices[4], submatrices[5]);
+
+        return res;
+    }
+
+    public static int[][][] stras_M7(int[][][] submatrices) {
+        int[][][] res = new int[2][][];
+
+        res[0] = sub(submatrices[1], submatrices[3]);
+        res[1] = add(submatrices[6], submatrices[7]);
+
+        return res;
+    }
+
+    /**
+     * Combine the 4 quadrants of the result matrix from the 7 M submatrices 
+     * @param matrices The 7 M submatrices ([7][size][siez])
+     * @return The resulting matrix ([2 * size][2 * size])
+     */
+    public static int[][] combineMatricesFromM(int[][][] matrices) {
+
+        int size = matrices[0].length;
+        int newSize = size * 2;
+
+        //Calculate the 4 quadrants of the result matrix
+        int[][] C12 = new int[size][size];
+        int[][] C11 = new int[size][size];
+        int[][] C21 = new int[size][size];
+        int[][] C22 = new int[size][size];
+
+        int[][] C = new int[newSize][newSize];
+
+        add(sub(add(matrices[0], matrices[3]), matrices[4]), matrices[6], C11); // C11 = M1 + M4 - M5 + M7
+        add(matrices[2], matrices[4], C12); // C12 = M3 + M5
+        add(matrices[1], matrices[3], C21); // C21 = M2 + M4
+        add(sub(add(matrices[0], matrices[2]), matrices[1]), matrices[5], C22); // C22 = M1 - M2 + M3 + M6
+
+        //Join the 4 quadrants into the result matrix
+        join(C, C11, 0, 0);
+        join(C, C12, 0, size);
+        join(C, C21, size, 0);
+        join(C, C22, size, size);
+
+        return C;
     }
 
     public long getRunningtime() {

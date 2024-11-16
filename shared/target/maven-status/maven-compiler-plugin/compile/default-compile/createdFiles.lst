@@ -1,13 +1,13 @@
 com\project\shared\MatrixUtil.class
 com\project\shared\Data$Type.class
+com\project\shared\ResultData.class
 com\project\shared\StrassenExecutor.class
 com\project\shared\Test.class
 com\project\shared\Data.class
 com\project\shared\TaskData.class
 com\project\shared\ProgressBar.class
+com\project\shared\Timing.class
 com\project\shared\RequestData.class
-com\project\shared\MatrixData.class
 com\project\shared\SubTaskData.class
 com\project\shared\ResponseData.class
 com\project\shared\ProfilingData.class
-com\project\shared\SubTask.class

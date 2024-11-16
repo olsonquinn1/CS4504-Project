@@ -19,6 +19,7 @@ import com.project.shared.ResponseData;
 import com.project.shared.TaskData;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -46,7 +47,7 @@ public class ClientApp extends Application {
 
     private final BlockingQueue<Data> outBuffer = new LinkedBlockingQueue<>();
 
-    private long lastPing = 0;
+    private final Object logLock = new Object();
 
     private PrintStream log;
 
@@ -87,11 +88,7 @@ public class ClientApp extends Application {
             primaryStage.show();
             primaryStage.setOnCloseRequest(event -> {
                 if (socket != null) {
-                   try {
-                      closeConnections(false);
-                   } catch (IOException e) {
-                      System.exit(1);
-                   }
+                   closeConnections(true);
                 }
                 System.exit(0);
              });
@@ -138,13 +135,17 @@ public class ClientApp extends Application {
     private void setUpLogStream(TextArea ta) {
       OutputStream outStream = new OutputStream() {
          @Override
-         public synchronized void write(int b) {
-            ta.appendText(String.valueOf((char) b));
+         public void write(int b) {
+            synchronized(logLock) {
+                ta.appendText(String.valueOf((char) b));
+            }
          }
 
          @Override
-         public synchronized void write(byte[] b, int off, int len) {
-            ta.appendText(new String(b, off, len));
+         public void write(byte[] b, int off, int len) {
+            synchronized(logLock) {
+                ta.appendText(new String(b, off, len));
+            }
          }
       };
 
@@ -166,7 +167,9 @@ public class ClientApp extends Application {
         sb.append("\n");
         sb.append(state == STATE.WAITING_FOR_CONFIRMATION ? "Waiting for confirmation" : state == STATE.WAITING_FOR_RESULT ? "Waiting for result" : "Idle");
 
-        lb_conn_status.setText(sb.toString());
+        runOnFxThread(() -> {
+            lb_conn_status.setText(sb.toString());
+        });
     }
 
     private void readLoop() {
@@ -178,6 +181,7 @@ public class ClientApp extends Application {
                 recv = (Data) in.readObject();
             } catch (ClassNotFoundException e) {
                 log.println("Error deserializing object from server: " + e.getMessage());
+                closeConnections(false);
                 break;
             } catch (IOException e) {
                 log.println("Error reading object from server: " + e.getMessage());
@@ -187,11 +191,7 @@ public class ClientApp extends Application {
             //check for close message
             if(recv.getType() == Data.Type.CLOSE) {
                 log.println("Connection closed by server");
-                try {
-                    closeConnections(false);
-                } catch (IOException e) {
-                    log.println("Error disconnecting from router: " + e.getMessage());
-                }
+                closeConnections(false);
                 break;
             }
 
@@ -209,6 +209,9 @@ public class ClientApp extends Application {
                     log.println("Server accepted request");
                 } else {
                     log.println("Server rejected request: " + resp.getMessage());
+                    state = STATE.IDLE;
+                    updateStatus();
+                    continue;
                 }
 
                 //generate matrices and send to server
@@ -219,7 +222,7 @@ public class ClientApp extends Application {
 
                 log.println("Matrices generated, sending to server");
 
-                TaskData task = new TaskData(A, B, cb_mat_size.getValue());
+                TaskData task = new TaskData(A, B, resp.getTaskId(), cb_thread_count.getValue());
 
                 Data data = new Data(
                     Data.Type.TASK_DATA,
@@ -296,11 +299,11 @@ public class ClientApp extends Application {
         new Thread(this::writeLoop).start();
 
         // set addr and port fields to uneditable
-        tf_addr.setEditable(false);
-        tf_port.setEditable(false);
+        runOnFxThread(() -> tf_addr.setEditable(false));
+        runOnFxThread(() -> tf_port.setEditable(false));
     }
 
-    public void closeConnections(boolean sendMessage) throws IOException {
+    public void closeConnections(boolean sendMessage) {
 
         if (socket == null || socket.isClosed() || out == null || in == null) {
             log.println("Not connected to router");
@@ -317,15 +320,19 @@ public class ClientApp extends Application {
             outBuffer.add(close);
         }
         
-        out.close();
-        in.close();
-        socket.close();
-
+        try {
+            out.close();
+            in.close();
+            socket.close();
+        } catch (IOException e) {
+            log.println("Error closing connections: " + e.getMessage());
+        }
+        
         log.println("Disconnected from router");
 
         // set addr and port fields to editable
-        tf_addr.setEditable(true);
-        tf_port.setEditable(true);
+        runOnFxThread(() -> tf_addr.setEditable(true));
+        runOnFxThread(() -> tf_port.setEditable(true));
     }
 
     @FXML
@@ -337,17 +344,17 @@ public class ClientApp extends Application {
             connectToRouter();
         }
         catch (UnknownHostException e) {
-            lb_conn_status.setText("Host not found");
+            runOnFxThread(() -> lb_conn_status.setText("Host not found"));
             log.println(routerAddr + ":" + routerPort + " Host not found");
             return;
         }
         catch (SocketTimeoutException e) {
-            lb_conn_status.setText("Connection timed out");
+            runOnFxThread(() -> lb_conn_status.setText("Connection timed out"));
             log.println(routerAddr + ":" + routerPort + " Connection timed out");
             return;
         }
         catch (IOException e) {
-            lb_conn_status.setText("Error connecting to router: " + e.getMessage());
+            runOnFxThread(() -> lb_conn_status.setText("Error connecting to router: " + e.getMessage()));
             log.println(routerAddr + ":" + routerPort + " Error connecting to router: " + e.getMessage());
             return;
         }
@@ -358,13 +365,7 @@ public class ClientApp extends Application {
 
     @FXML
     public void disconnectButtonClicked() {
-        try {
-            closeConnections(true);
-        } catch (IOException e) {
-            lb_conn_status.setText("Error disconnecting from router");
-            log.println("Error disconnecting from router");
-            return;
-        }
+        closeConnections(true);
         updateStatus();
     }
 
@@ -390,5 +391,9 @@ public class ClientApp extends Application {
 
         state = STATE.WAITING_FOR_CONFIRMATION;
         updateStatus();
+    }
+
+    public synchronized void runOnFxThread(Runnable task) {
+        Platform.runLater(task);
     }
 }

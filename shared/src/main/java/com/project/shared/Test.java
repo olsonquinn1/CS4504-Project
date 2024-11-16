@@ -1,6 +1,8 @@
 package com.project.shared;
 
 import static com.project.shared.MatrixUtil.generateSquareMatrix;
+import static com.project.shared.MatrixUtil.matricesEqual;
+import static com.project.shared.MatrixUtil.matrixMult;
 
 public class Test {
     
@@ -8,10 +10,9 @@ public class Test {
         //args[0] = matrix size
         //args[1] = thread count
         //args[2] = threshold
-        //args[3] = task count
 
         //validate args
-        if (args.length != 4) {
+        if (args.length != 3) {
             System.out.println("Usage: java Test <matrix size> <thread count> <threshold>");
             System.exit(1);
         }
@@ -32,11 +33,21 @@ public class Test {
 
         System.out.println("Matrix size: " + n + "x" + n);
 
+        int[][] res = null;
+
         try {
-            se.run(A, B, System.out);
+            res = se.run(A, B, System.out);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        System.out.println(se.getRunningtime() + "ms");
+        System.out.println(se.getRunningtime() + "ms\nValidating result...");
+
+        int[][] resValidate = matrixMult(A, B);
+
+        if (matricesEqual(res, resValidate)) {
+            System.out.println("Result is correct");
+        } else {
+            System.out.println("Result is incorrect");
+        }
     }
 }

@@ -1,27 +1,50 @@
 package com.project.shared;
 
 import java.io.Serializable;
-import java.util.List;
 
 public class SubTaskData implements Serializable {
     
-    private final int[][][] subMatrices;
-    private final List<Integer> mVals;
+    private final int[][] matrixA;
+    private final int[][] matrixB;
+    private final int m;
+    private final int taskId;
+    private int coresToUse;
 
-    public SubTaskData(List<Integer> mVals) {
-        this.subMatrices = new int[8][][];
-        this.mVals = mVals;
+    public SubTaskData(int[][][] matrices, int m, int taskId) {
+        this.matrixA = matrices[0];
+        this.matrixB = matrices[1];
+        this.m = m;
+        this.taskId = taskId;
     }
 
-    public void setSubmatrix(int index, int[][] subMatrix) {
-        this.subMatrices[index] = subMatrix;
+    public SubTaskData(int[][] matrixA, int[][] matrixB, int m, int taskId) {
+        this.matrixA = matrixA;
+        this.matrixB = matrixB;
+        this.m = m;
+        this.taskId = taskId;
     }
 
-    public List<Integer> getMVals() {
-        return mVals;
+    public int[][] getMatrixA() {
+        return matrixA;
     }
 
-    public int[][][] getSubMatrices() {
-        return subMatrices;
+    public int[][] getMatrixB() {
+        return matrixB;
+    }
+
+    public int getM() {
+        return m;
+    }
+
+    public int getTaskId() {
+        return taskId;
+    }
+
+    public int getCoresToUse() {
+        return coresToUse;
+    }
+
+    public void setCoresToUse(int coresToUse) {
+        this.coresToUse = coresToUse;
     }
 }

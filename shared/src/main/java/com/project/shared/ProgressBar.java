@@ -11,6 +11,10 @@ public class ProgressBar {
     private double progressPerBar;
     private PrintStream out;
 
+    private long updatesPerSecond = 2;
+    private long lastUpdateTime = 0;
+    private long updateInterval;
+
     public ProgressBar(int maxProgress, int barLength, PrintStream out) {
         this.out = out;
         this.maxProgress = maxProgress;
@@ -18,6 +22,13 @@ public class ProgressBar {
         this.currentProgress = 0;
         this.currentBarProgress = 0;
         this.progressPerBar = (double) maxProgress / barLength;
+
+        this.updateInterval = 1000 / updatesPerSecond;
+    }
+
+    public void setUpdatesPerSecond(long updatesPerSecond) {
+        this.updatesPerSecond = updatesPerSecond;
+        this.updateInterval = 1000 / updatesPerSecond;
     }
 
     public void start() {
@@ -51,11 +62,19 @@ public class ProgressBar {
             return;
         }
 
+        long currentTime = System.currentTimeMillis();
+
+        if(!(currentProgress + currentBarProgress >= maxProgress) && currentTime - lastUpdateTime < updateInterval) {
+            return;
+        }
+
         while (currentBarProgress >= progressPerBar && currentProgress < maxProgress) {
             currentProgress += progressPerBar;
             currentBarProgress -= progressPerBar;
             write("\u2588");
         }
+
+        lastUpdateTime = currentTime;
     }
 
     private synchronized void write(String s) {

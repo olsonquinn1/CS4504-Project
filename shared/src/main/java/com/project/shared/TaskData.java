@@ -6,12 +6,14 @@ public class TaskData implements Serializable {
 
     private final int[][] matrixA;
     private final int[][] matrixB;
-    private final int matrixSize;
+    private final int taskId;
+    private final int threadsToUse;
 
-    public TaskData(int[][] matrixA, int[][] matrixB, int matrixSize) {
+    public TaskData(int[][] matrixA, int[][] matrixB, int taskId, int threadsToUse) {
         this.matrixA = matrixA;
         this.matrixB = matrixB;
-        this.matrixSize = matrixSize;
+        this.taskId = taskId;
+        this.threadsToUse = threadsToUse;
     }
 
     public int[][] getMatrixA() {
@@ -22,7 +24,11 @@ public class TaskData implements Serializable {
         return matrixB;
     }
 
-    public int getMatrixSize() {
-        return matrixSize;
+    public int getTaskId() {
+        return taskId;
+    }
+
+    public int getThreadsToUse() {
+        return threadsToUse;
     }
 }

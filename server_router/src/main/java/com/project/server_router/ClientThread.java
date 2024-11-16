@@ -2,70 +2,25 @@ package com.project.server_router;
 
 import java.io.IOException;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import com.project.shared.Data;
 import static com.project.shared.MatrixUtil.divideIntoQuadrants;
 import com.project.shared.RequestData;
 import com.project.shared.ResponseData;
+import com.project.shared.ResultData;
+import com.project.shared.StrassenExecutor;
 import com.project.shared.SubTaskData;
 import com.project.shared.TaskData;
 
 public class ClientThread extends RouterThread {
 
-    //my current best solution at how to split the matrices to balance data transfer and computation
-    //via analysis of overlapping required submatrices for each M value
-    //we will assume 1 <= servers <= 7
-    //for 1 server: [m1, m2, m3, m4, m5, m6, m7]
-    //for 2 servers: [m3, m5, m7], [m1, m2, m4, m6]
-    //for 3 servers: [m1, m4, m5], [m2, m6], [m3, m7]
-    //for 4 servers: [m1, m4], [m2, m6], [m3, m6], [m7]
-    //for 5 servers: [m3, m5], [m2, m4], [m7], [m6], [m1]
-    //for 6 servers: [m2, m4], [m6], [m1], [m5], [m3], [m7]
-    //for 7 servers: [m1], [m4], [m5], [m2], [m6], [m3], [m7]
-    private static final int[][][] serverMap = {
-        {{0, 1, 2, 3, 4, 5, 6}},
-        {{0, 1, 3, 5}, {2, 4, 6}},
-        {{0, 3, 4}, {1, 5}, {2, 6}},
-        {{0, 3}, {1, 5}, {2, 5}, {6}},
-        {{2, 4}, {1, 3}, {0}, {5}, {6}},
-        {{1, 3}, {0}, {2}, {4}, {5}, {6}},
-        {{0}, {1}, {2}, {3}, {4}, {5}, {6}}
-    };
+    private Thread dataQueueThread;
+    private Thread socketThread;
 
-    //maps M values to submatrices (a11, a12, a21, a22, b11, b12, b21, b22)
-    private static final int[][] m_subMatrices = {
-        {1, 0, 0, 1, 1, 0, 0, 1},   // M1
-        {0, 0, 1, 1, 1, 0, 0, 0},   // M2
-        {1, 0, 0, 0, 0, 1, 0, 1},   // M3
-        {0, 0, 0, 1, 1, 0, 1, 0},   // M4
-        {1, 1, 0, 0, 0, 0, 0, 1},   // M5
-        {1, 0, 1, 0, 1, 1, 0, 0},   // M6
-        {0, 1, 0, 1, 0, 0, 1, 1}    // M7
-    };
-
-    private static int[] getGroupEncoding(List<Integer> group) {
-        int[] encoding = new int[8];
-
-        for (int m : group) {
-            for (int i = 0; i < 8; i++) {
-                encoding[i] |= m_subMatrices[m - 1][i]; // m-1 because M values are 1-indexed
-            }
-        }
-    
-        return encoding;
-    }
-
-    private enum STATE {
-        IDLE,
-        WAITING_FOR_MATRICES,
-        WAITING_FOR_RESULT
-    }
-
-    private STATE state = STATE.IDLE;
+    private int[][][] resultMatrices;
+    private boolean[] resultStatus;
 
     public ClientThread(Socket clientSocket, List<Connection> routingTable, RouterApp routerApp) throws IOException {
         super(clientSocket, routingTable, false, routerApp);
@@ -75,6 +30,14 @@ public class ClientThread extends RouterThread {
 
         routerApp.updateConnectionLists();
 
+        dataQueueThread = new Thread(this::dataQueueLoop);
+        socketThread = new Thread(this::socketLoop);
+
+        dataQueueThread.start();
+        socketThread.start();
+    }
+
+    private void socketLoop() {
         while (true) {
 
             //wait for message from client
@@ -82,13 +45,13 @@ public class ClientThread extends RouterThread {
             try {
                 recv = (Data) in.readObject();
             } catch (ClassNotFoundException e) {
-                routerApp.writeToConsole("ClientThread: Failed to deserialize message from client");
+                log("Failed to deserialize message from client");
             } catch (IOException e) {
-                routerApp.writeToConsole("ClientThread: Failed to receive message from client");
+                log("Failed to receive message from client");
             }
 
             if(recv == null || recv.getType() == Data.Type.CLOSE) {
-                handleClose();
+                break;
             }
             else if(recv.getType() == Data.Type.REQUEST) {
                 handleRequest((RequestData)recv.getData());
@@ -97,26 +60,53 @@ public class ClientThread extends RouterThread {
                 handleTask((TaskData)recv.getData());
             }
         }
+
+        handleClose();
+
+        dataQueueThread.interrupt();
+    }
+
+    private void dataQueueLoop() {
+        while (true) { 
+
+            Data recv = null;
+
+            try {
+                recv = myConnection.dataQueue.take();
+            } catch (InterruptedException e) {
+                log("Failed to take data from queue");
+            }
+
+            if(recv == null || recv.getType() == Data.Type.CLOSE) {
+                break;
+            }
+
+            if(recv.getType() == Data.Type.RESULT_DATA) {
+                handleResult((ResultData)recv.getData());
+            }
+            
+        }
+
+        handleClose();
+
+        socketThread.interrupt();
     }
 
     private void handleClose() {
         try {
             closeConnection();
         } catch (IOException e) {
-            routerApp.writeToConsole("ClientThread: Failed to close connection");
+            log("Failed to close connection");
         }
-        routerApp.writeToConsole("ClientThread: Connection closed by client");
+        log("Connection closed by client");
     }
 
     private void handleRequest(RequestData requ) {
-        if(state != STATE.IDLE) {
-            //bad
-            routerApp.writeToConsole("ClientThread: Received unexpected request from client");
-            return;
-        }
 
         int threadCount = requ.getThreadCount();
         int taskId = -1;
+
+        log("Received request for " + threadCount + " threads");
 
         try {
             taskId = routerApp.allocateServers(threadCount);
@@ -131,9 +121,13 @@ public class ClientThread extends RouterThread {
                 out.writeObject(send);
                 out.flush();
             } catch (IOException e1) {
-                routerApp.writeToConsole("ClientThread: Failed to send error message to client");
+                log("Failed to send error message to client");
             }
+
+            return;
         }
+
+        log("Request accepted, task id: " + taskId);
 
         //send confirmation to client
         ResponseData resp = new ResponseData("Task " + taskId + " started", true, taskId);
@@ -143,64 +137,136 @@ public class ClientThread extends RouterThread {
             out.writeObject(send);
             out.flush();
         } catch (IOException e) {
-            routerApp.writeToConsole("ClientThread: Failed to send response to client");
+            log("Failed to send response to client");
         }
 
-        state = STATE.WAITING_FOR_MATRICES;
-        myConnection.setTaskId(taskId);
+        try {
+            myConnection.addNewTask(taskId);
+            myConnection.incrementTask(taskId, 7);
+        } catch (Exception e) {
+            log("Error adding task to client");
+        }
     }
 
     private void handleTask(TaskData task) {
 
-        if(state != STATE.WAITING_FOR_MATRICES) {
+        if(!myConnection.hasTaskId(task.getTaskId())) {
             //bad
-            routerApp.writeToConsole("ClientThread: Received unexpected task data from client");
+            log("Received unauthorized task");
             return;
         }
 
-        //geneate indices for submatrices
+        log("Processing task... " + task.getTaskId());
+        log("Received 2 matrices of size " + task.getMatrixA().length + "x" + task.getMatrixA()[0].length);
+
+        //collect all servers that are assigned to this task (sorted by total tasks then speed)
+        int taskId = task.getTaskId();
+        List<Connection> myServers = routerApp.getServersByTaskIdSorted(taskId);
+        int serverCount = myServers.size();
+        int threadCount = task.getThreadsToUse();
+
+        //geneate submatrices
         int[][][] subMatrices = getSubMatrices(task);
 
-        //collect all servers that are assigned to this task
-        int taskId = myConnection.getTaskId();
-        List<Connection> myServers = routingTable.stream()
-            .filter(conn -> conn.isServer())
-            .filter(conn -> conn.getTaskId() == taskId)
-            .collect(Collectors.toList());
-        
-        //sort servers by speed rating
-        myServers.sort((conn1, conn2) -> Double.compare(conn1.speedRating, conn2.speedRating));
+        List<SubTaskData> subTasks = Arrays.asList(
+            new SubTaskData(StrassenExecutor.stras_M1(subMatrices), 0, taskId),
+            new SubTaskData(StrassenExecutor.stras_M2(subMatrices), 1, taskId),
+            new SubTaskData(StrassenExecutor.stras_M3(subMatrices), 2, taskId),
+            new SubTaskData(StrassenExecutor.stras_M4(subMatrices), 3, taskId),
+            new SubTaskData(StrassenExecutor.stras_M5(subMatrices), 4, taskId),
+            new SubTaskData(StrassenExecutor.stras_M6(subMatrices), 5, taskId),
+            new SubTaskData(StrassenExecutor.stras_M7(subMatrices), 6, taskId)
+        );
 
-        int serverCount = myServers.size();
-        int[][] groups = serverMap[serverCount - 1];
+        subMatrices = null;
 
-        //a list of lists of M values for each group
-        List<List<Integer>> taskDivision = new ArrayList<>();
-        for (int[] group : groups) {
-            taskDivision.add(Arrays.stream(group).boxed().collect(Collectors.toList()));
-        }
+        resultMatrices = new int[7][][];
+        resultStatus = new boolean[] {false, false, false, false, false, false, false};
 
-        //pack data and send to corresponding server's data queue
-        for (int i = 0; i < serverCount; i++) {
-            Connection server = myServers.get(i);
-            List<Integer> group = taskDivision.get(i);
+        int tasksPerServer = subTasks.size() / serverCount;
+        int remainder = subTasks.size() % serverCount;
+        int taskIndex = 0;
+        int threadsLeft = threadCount;
 
-            SubTaskData subTask = new SubTaskData(group);
+        for(int s = 0; s < myServers.size(); s++) {
 
-            for(int m : group) {
-                subTask.setSubmatrix(m, subMatrices[m]);
+            int n_threads = myServers.get(s).getLogicalCores();
+
+            if(threadsLeft < n_threads) {
+                n_threads = threadsLeft;
+
+                //if not the last server in the list, we have a problem
+                if(s != myServers.size() - 1) {
+                    log("Not enough threads to allocate to all servers");
+                    break;
+                }
+            } else {
+                threadsLeft -= n_threads;
             }
 
-            Data send = new Data(Data.Type.SUBTASK_DATA, subTask);
+            //each gets tasksPerServer tasks, if s < remainder, add 1 more task
+            int taskCount = tasksPerServer + (s < remainder ? 1 : 0);
+            Connection server = myServers.get(s);
+
+            for(int t = 0; t < taskCount; t++) {
+
+                SubTaskData subTask = subTasks.get(taskIndex++);
+                subTask.setCoresToUse(n_threads);
+                Data send = new Data(Data.Type.SUBTASK_DATA, subTask);
+
+                try {
+                    server.dataQueue.put(send);
+                } catch (InterruptedException e) {
+                    log("Failed to send subtask to ServerThread");
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    private void handleResult(ResultData result) {
+
+        int taskId = result.getTaskId();
+        int subTaskId = result.getM();
+
+        if(!myConnection.hasTaskId(taskId)) {
+            //bad
+            log("Received result with task id not associated with client");
+            return;
+        }
+
+        if(subTaskId < 0 || subTaskId >= 7) {
+            //bad
+            log("Received result with invalid subtask id");
+            return;
+        }
+
+        resultMatrices[subTaskId] = result.getResultMatrix();
+        resultStatus[subTaskId] = true;
+
+        boolean complete = true;
+        for(boolean b : resultStatus) {
+            if(!b) {
+                complete = false;
+                break;
+            }
+        }
+
+        if(complete) {
+            //all results received, combine and send to client
+            int[][] resultMatrix = StrassenExecutor.combineMatricesFromM(resultMatrices);
+
+            ResultData resultData = new ResultData(resultMatrix, -1, taskId);
+
+            Data send = new Data(Data.Type.RESULT_DATA, resultData);
 
             try {
-                server.dataQueue.put(send);
-            } catch (InterruptedException e) {
-                routerApp.writeToConsole("ClientThread: Failed to send subtask data to server");
+                out.writeObject(send);
+                out.flush();
+            } catch (IOException e) {
+                log("Failed to send result to client");
             }
         }
-
-        state = STATE.WAITING_FOR_RESULT;
     }
 
     private int[][][] getSubMatrices(TaskData task) {
@@ -208,11 +274,18 @@ public class ClientThread extends RouterThread {
         matrices[0] = task.getMatrixA();
         matrices[1] = task.getMatrixB();
 
+        int size = matrices[0].length;
+        int halfSize = size / 2;
+
         //geneate indices for submatrices
-        int[][][] subMatrices = new int[8][][];
+        int[][][] subMatrices = new int[8][halfSize][halfSize];
         divideIntoQuadrants(matrices[0], subMatrices[0], subMatrices[1], subMatrices[2], subMatrices[3]);
         divideIntoQuadrants(matrices[1], subMatrices[4], subMatrices[5], subMatrices[6], subMatrices[7]);
 
         return subMatrices;
+    }
+
+    private void log(String message) {
+        routerApp.writeToConsole("ClientThread " + myConnection.getId() + ":  " + message);
     }
 }

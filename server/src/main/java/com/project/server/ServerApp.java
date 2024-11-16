@@ -8,6 +8,7 @@ import java.io.PrintStream;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 
 import com.project.shared.Data;
@@ -15,8 +16,12 @@ import static com.project.shared.MatrixUtil.generateSquareMatrix;
 import static com.project.shared.MatrixUtil.matrixMult;
 import com.project.shared.ProfilingData;
 import com.project.shared.ProgressBar;
+import com.project.shared.ResultData;
+import com.project.shared.StrassenExecutor;
+import com.project.shared.SubTaskData;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -42,6 +47,7 @@ public class ServerApp extends Application {
     private Stage primaryStage;
 
     private PrintStream log;
+    private final Object logLock = new Object();
 
     private final int numCores = Runtime.getRuntime().availableProcessors();
 
@@ -115,6 +121,9 @@ public class ServerApp extends Application {
             tf_port.setStyle("-fx-border-color: black");
         });
 
+        tf_addr.setText("localhost");
+        tf_port.setText("5555");
+
         new Thread(() -> {
             // sleep thread for a few seconds to allow the window to load
             try {
@@ -131,15 +140,19 @@ public class ServerApp extends Application {
 
     private void setUpLogStream(TextArea ta) {
         OutputStream outStream = new OutputStream() {
-            @Override
-            public synchronized void write(int b) {
+           @Override
+           public void write(int b) {
+              synchronized(logLock) {
                 ta.appendText(String.valueOf((char) b));
-            }
-
-            @Override
-            public synchronized void write(byte[] b, int off, int len) {
+              }
+           }
+  
+           @Override
+           public void write(byte[] b, int off, int len) {
+              synchronized(logLock) {
                 ta.appendText(new String(b, off, len));
-            }
+              }
+           }
         };
 
         log = new PrintStream(outStream, true);
@@ -241,7 +254,7 @@ public class ServerApp extends Application {
         log.println("Disconnected from router");
     }
 
-    protected void readLoop() {
+    private void readLoop() {
         while (true) {
             Data recv = null;
             try {
@@ -265,9 +278,46 @@ public class ServerApp extends Application {
             }
             else if (recv.getType() == Data.Type.SUBTASK_DATA) {
                 log.println("Received task data from server");
-                // handle task data
+                handleComputation((SubTaskData) recv.getData());
             }
         }
+    }
+
+    private void handleComputation(SubTaskData subtask) {
+
+        log.println("Processing Task " + subtask.getTaskId() + " - " + subtask.getM());
+
+        //log matrix sizes
+        log.println("Matrix A: " + subtask.getMatrixA().length + "x" + subtask.getMatrixA()[0].length);
+        log.println("Matrix B: " + subtask.getMatrixB().length + "x" + subtask.getMatrixB()[0].length);
+
+        StrassenExecutor executor = new StrassenExecutor(subtask.getCoresToUse(), 64);
+
+        int[][] result = null;
+        try {
+            result = executor.run(subtask.getMatrixA(), subtask.getMatrixB());
+        } catch (InterruptedException e) {
+            log.println("Error running Strassen algorithm (0): " + e.getMessage());
+        } catch(ExecutionException e) {
+            log.println("Error running Strassen algorithm (1): " + e.getMessage());
+        } catch(IllegalArgumentException e) {
+            log.println("Error running Strassen algorithm (2): " + e.getMessage());
+        }
+
+        ResultData resultData = new ResultData(
+            result,
+            subtask.getM(),
+            subtask.getTaskId()
+        );
+
+        Data send = new Data(
+            Data.Type.RESULT_DATA,
+            resultData
+        );
+
+        log.println("Sending result data to server");
+
+        outBuffer.add(send);
     }
 
     private void writeLoop() {
@@ -315,7 +365,11 @@ public class ServerApp extends Application {
         log.println("Disconnected from router");
 
         // set addr and port fields to editable
-        tf_addr.setEditable(true);
-        tf_port.setEditable(true);
+        runOnFxThread(() -> tf_addr.setEditable(true));
+        runOnFxThread(() -> tf_port.setEditable(true));
+    }
+
+    public synchronized void runOnFxThread(Runnable task) {
+        Platform.runLater(task);
     }
 }

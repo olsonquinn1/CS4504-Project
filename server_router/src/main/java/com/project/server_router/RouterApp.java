@@ -6,7 +6,9 @@ import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import javafx.application.Application;
@@ -38,8 +40,10 @@ public class RouterApp extends Application {
     private Stage primaryStage;
 
     private PrintStream log;
+    private final Object logLock = new Object();
 
-    private int taskCounter = 0;
+    public AtomicInteger connectionCounter = new AtomicInteger(0);
+    public AtomicInteger taskCounter = new AtomicInteger(0);
 
     @FXML
     private TextArea ta_log;
@@ -121,8 +125,8 @@ public class RouterApp extends Application {
                         .filter(conn -> conn.isServer())
                         .map(conn ->
                             conn.getAddr() + ":" + conn.getPort()
-                            + "(" + conn.getLogicalCores() + ", " + conn.speedRating + ")"
-                            + (conn.isInUse() ? " (in use: " + conn.getTaskId() + ")" : "")
+                            + "(" + conn.getLogicalCores() + ", " + conn.getSpeedRating() + ")"
+                            + (conn.getTotalTasks() > 0 ? " (in use: " + conn.getTasksString() + ")" : "")
                         )
                         .collect(Collectors.toList()));
 
@@ -140,19 +144,23 @@ public class RouterApp extends Application {
     }
 
     private void setUpLogStream(TextArea ta) {
-        OutputStream out = new OutputStream() {
-            @Override
-            public synchronized void write(int b) {
-                ta.appendText(String.valueOf((char) b));
-            }
-
-            @Override
-            public synchronized void write(byte[] b, int off, int len) {
-                ta.appendText(new String(b, off, len));
-            }
+        OutputStream outStream = new OutputStream() {
+           @Override
+           public void write(int b) {
+              synchronized(logLock) {
+                  ta.appendText(String.valueOf((char) b));
+              }
+           }
+  
+           @Override
+           public void write(byte[] b, int off, int len) {
+              synchronized(logLock) {
+                  ta.appendText(new String(b, off, len));
+              }
+           }
         };
-
-        log = new PrintStream(out, true);
+        
+        log = new PrintStream(outStream, true);
     }
 
     public void writeToConsole(String s) {
@@ -168,11 +176,12 @@ public class RouterApp extends Application {
      */
     public synchronized int allocateServers(int threadCount) throws IOException {
 
-        //collect all available servers (inUse == false)
+        //collect all servers, sort by total tasks then speed rating
         List<Connection> availableServers = routingTable.stream()
-                .filter(conn -> conn.isServer())
-                .filter(conn -> !conn.isInUse())
-                .collect(Collectors.toList());
+        .filter(Connection::isServer)
+        .sorted(Comparator.comparingInt(Connection::getTotalTasks)
+                .thenComparingDouble(Connection::getSpeedRating).reversed())
+        .collect(Collectors.toList());
 
         if (availableServers.isEmpty()) {
             throw new IOException("No servers available");
@@ -186,7 +195,7 @@ public class RouterApp extends Application {
         }
 
         //sort by speed rating
-        availableServers.sort((a, b) -> Double.compare(a.speedRating, b.speedRating));
+        availableServers.sort((a, b) -> Double.compare(a.getSpeedRating(), b.getSpeedRating()));
 
         //select servers until enough cores are allocated
         List<Connection> selectedServers = new ArrayList<>();
@@ -194,9 +203,6 @@ public class RouterApp extends Application {
 
         for(int i = 0; i < availableServers.size(); i++) {
             Connection server = availableServers.get(i);
-            if(server.isInUse()) {
-                continue;
-            }
             selectedServers.add(server);
             int cores = server.getLogicalCores();
             usedCores += cores;
@@ -206,11 +212,20 @@ public class RouterApp extends Application {
             }
         }
 
-        int taskId = taskCounter++;
+        //we can utilize a max of 7 servers per task
+        if(selectedServers.size() > 7) {
+            throw new IOException("Can't allocate enough cores with max server size of 7");
+        }
+
+        int taskId = taskCounter.incrementAndGet();
 
         for(Connection server : selectedServers) {
-            server.setInUse(true);
-            server.setTaskId(taskId);
+            
+            try {
+                server.addNewTask(taskId);
+            } catch (Exception e) {
+                throw new IOException("Error adding task to server: " + e.getMessage());
+            }
         }
 
         updateConnectionLists();
@@ -228,5 +243,40 @@ public class RouterApp extends Application {
             System.err.println("Error closing server and client sockets.");
             System.exit(1);
         }
+    }
+
+    public void removeConnection(Connection conn) {
+        routingTable.remove(conn);
+        updateConnectionLists();
+    }
+
+    public List<Connection> getServersSortedByTasksThenSpeed() {
+        return routingTable.stream()
+                .filter(Connection::isServer)
+                .sorted(Comparator.comparingInt(Connection::getTotalTasks)
+                        .thenComparingDouble(Connection::getSpeedRating).reversed())
+                .collect(Collectors.toList());
+    }
+
+    public List<Connection> getServersByTaskId(int taskId) {
+        return routingTable.stream()
+                .filter(Connection::isServer)
+                .filter(conn -> conn.hasTaskId(taskId))
+                .collect(Collectors.toList());
+    }
+
+    public List<Connection> getServersByTaskIdSorted(int taskId) {
+        List<Connection> servers = getServersSortedByTasksThenSpeed();
+        return servers.stream()
+                .filter(conn -> conn.hasTaskId(taskId))
+                .collect(Collectors.toList());
+    }
+
+    public Connection getClientByTaskId(int taskId) {
+        return routingTable.stream()
+                .filter(conn -> !conn.isServer())
+                .filter(conn -> conn.hasTaskId(taskId))
+                .findFirst()
+                .orElse(null);
     }
 }
