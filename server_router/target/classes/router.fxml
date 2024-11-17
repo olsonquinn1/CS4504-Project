@@ -12,7 +12,10 @@
       <Label layoutX="95.0" layoutY="14.0" text="Servers" />
       <ListView fx:id="lv_clients" layoutX="14.0" layoutY="293.0" prefHeight="93.0" prefWidth="200.0" />
       <Label layoutX="97.0" layoutY="276.0" text="Clients" />
-      <Label fx:id="lb_conn_status" layoutX="225.0" layoutY="31.0" prefHeight="84.0" prefWidth="360.0" style="-fx-border-color: #000000;" />
+      <Label fx:id="lb_conn_status" alignment="CENTER" layoutX="225.0" layoutY="31.0" prefHeight="84.0" prefWidth="360.0" text="test" textAlignment="CENTER">
+         <font>
+            <Font size="20.0" />
+         </font></Label>
       <TextArea fx:id="ta_log" editable="false" layoutX="225.0" layoutY="125.0" prefHeight="262.0" prefWidth="360.0">
          <font>
             <Font name="Consolas" size="10.0" />

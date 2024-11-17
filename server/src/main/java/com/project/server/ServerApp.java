@@ -194,8 +194,8 @@ public class ServerApp extends Application {
         outBuffer.add(send);
 
         // set addr and port fields to uneditable
-        runOnFxThread(() -> tf_addr.setEditable(false));
-        runOnFxThread(() -> tf_port.setEditable(false));
+        Platform.runLater(() -> tf_addr.setEditable(false));
+        Platform.runLater(() -> tf_port.setEditable(false));
     }
 
     /**
@@ -247,22 +247,22 @@ public class ServerApp extends Application {
             connectToRouter();
         }
         catch (UnknownHostException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Host not found"));
+            Platform.runLater(() -> lb_conn_status.setText("Host not found"));
             log.println(routerAddr + ":" + routerPort + " Host not found");
             return;
         }
         catch (SocketTimeoutException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Connection timed out"));
+            Platform.runLater(() -> lb_conn_status.setText("Connection timed out"));
             log.println(routerAddr + ":" + routerPort + " Connection timed out");
             return;
         }
         catch (IOException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Error connecting to router: " + e.getMessage()));
+            Platform.runLater(() -> lb_conn_status.setText("Error connecting to router: " + e.getMessage()));
             log.println(routerAddr + ":" + routerPort + " Error connecting to router: " + e.getMessage());
             return;
         }
 
-        lb_conn_status.setText("Connected to " + routerAddr + ":" + routerPort);
+        lb_conn_status.setText("Connected\n" + routerAddr + ":" + routerPort);
 
         log.println("Connected to " + routerAddr + ":" + routerPort);
     }
@@ -416,11 +416,9 @@ public class ServerApp extends Application {
         log.println("Disconnected from router");
 
         // set addr and port fields to editable
-        runOnFxThread(() -> tf_addr.setEditable(true));
-        runOnFxThread(() -> tf_port.setEditable(true));
-    }
+        Platform.runLater(() -> tf_addr.setEditable(true));
+        Platform.runLater(() -> tf_port.setEditable(true));
 
-    public synchronized void runOnFxThread(Runnable task) {
-        Platform.runLater(task);
+        Platform.runLater(() -> lb_conn_status.setText("Disconnected"));
     }
 }

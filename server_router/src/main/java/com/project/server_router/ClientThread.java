@@ -296,6 +296,8 @@ public class ClientThread extends RouterThread {
         taskTimestamps.get(taskId).add(new Timestamp("M" + (subTaskId + 1) + " received by router"));
         taskMatrices.get(taskId)[subTaskId] = result.getResultMatrix();
 
+        taskTimestamps.get(taskId).addAll(result.getTimestamps());
+
         myConnection.decrementTask(taskId, 1);
 
         if(myConnection.getTasksRemaining(taskId) == 0) {
@@ -319,8 +321,10 @@ public class ClientThread extends RouterThread {
                 log("Failed to send result to client");
             }
 
+            //clean up
             myConnection.removeTask(taskId);
             taskTimestamps.remove(taskId);
+            taskMatrices.remove(taskId);
         }
     }
 

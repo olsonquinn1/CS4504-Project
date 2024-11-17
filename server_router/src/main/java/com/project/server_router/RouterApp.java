@@ -30,6 +30,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
+import javafx.scene.control.Label;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 
@@ -66,6 +67,8 @@ public class RouterApp extends Application {
     private ListView<String> lv_servers;
     @FXML
     private ListView<String> lv_clients;
+    @FXML
+    private Label lb_conn_status;
 
     public static void main(String[] args) throws IOException {
         launch(args);
@@ -140,6 +143,8 @@ public class RouterApp extends Application {
         
                 Platform.runLater(() -> lv_servers.refresh());
                 Platform.runLater(() -> lv_clients.refresh());
+
+                updateStatus();
             }
         }, 0, 500);
     }
@@ -175,6 +180,25 @@ public class RouterApp extends Application {
                 };
             }
         });
+    }
+
+    /**
+     * Updates the status of the router application by displaying the number of connected servers and total core count,
+     * the number of clients, and the number of active tasks.
+     */
+    private void updateStatus() {
+        StringBuilder sb = new StringBuilder();
+        //display # connected servers and total core count, and clients and # of active tasks
+        int serverCount = (int) routingTable.stream().filter(conn -> conn.isServer()).count();
+        int coreCount = routingTable.stream().filter(conn -> conn.isServer()).mapToInt(Connection::getLogicalCores).sum();
+        int clientCount = (int) routingTable.stream().filter(conn -> !conn.isServer()).count();
+        int taskCount = (int) routingTable.stream().filter(conn -> conn.getTotalTasks() > 0).count();
+
+        sb.append("Servers: ").append(serverCount).append(" (").append(coreCount).append(" cores)")
+            .append("\nClients: ").append(clientCount)
+            .append("\nTasks: ").append(taskCount);
+
+        Platform.runLater(() -> lb_conn_status.setText(sb.toString()));
     }
 
     /**

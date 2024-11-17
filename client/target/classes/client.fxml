@@ -9,7 +9,7 @@
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.text.Font?>
 
-<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="920.0" xmlns="http://javafx.com/javafx/18" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.project.client.ClientApp">
+<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="1020.0" xmlns="http://javafx.com/javafx/18" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.project.client.ClientApp">
    <children>
       <TextField fx:id="tf_port" layoutX="44.0" layoutY="69.0" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="25.0" prefWidth="150.0" />
       <Button fx:id="btn_connect" layoutX="200.0" layoutY="27.0" mnemonicParsing="false" onAction="#connectButtonClicked" prefHeight="25.0" prefWidth="80.0" text="Connect" />
@@ -29,11 +29,13 @@
       <Label layoutX="15.0" layoutY="256.0" text="Matrix Size" />
       <ChoiceBox fx:id="cb_mat_size" layoutX="99.0" layoutY="252.0" prefHeight="25.0" prefWidth="181.0" />
       <Label layoutX="15.0" layoutY="294.0" text="Thread Count" />
-      <Button layoutX="15.0" layoutY="326.0" mnemonicParsing="false" onAction="#sendButtonClicked" prefHeight="57.0" prefWidth="89.0" text="Send Request" />
+      <Button layoutX="14.0" layoutY="327.0" mnemonicParsing="false" onAction="#sendButtonClicked" prefHeight="65.0" prefWidth="265.0" text="Run Test">
+         <font>
+            <Font size="27.0" />
+         </font></Button>
       <ChoiceBox fx:id="cb_thread_count" layoutX="99.0" layoutY="290.0" prefHeight="25.0" prefWidth="181.0" />
-      <TableView fx:id="tv_analysis" layoutX="561.0" layoutY="42.0" prefHeight="350.0" prefWidth="350.0" />
-      <ChoiceBox layoutX="600.0" layoutY="15.0" prefHeight="25.0" prefWidth="311.0" />
+      <TableView fx:id="tv_analysis" layoutX="561.0" layoutY="42.0" prefHeight="350.0" prefWidth="450.0" />
+      <ChoiceBox fx:id="cb_view" layoutX="594.0" layoutY="15.0" prefHeight="25.0" prefWidth="412.0" />
       <Label layoutX="561.0" layoutY="19.0" prefHeight="17.0" prefWidth="149.0" text="View" />
-      <Button layoutX="142.0" layoutY="326.0" mnemonicParsing="false" onAction="#sendButtonClicked" prefHeight="57.0" prefWidth="137.0" text="Run Full Test on Size" />
    </children>
 </AnchorPane>

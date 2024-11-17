@@ -41,7 +41,7 @@ RequestData     --> (int threadCount)
 ResponseData    --> (String message, int taskId, boolean success)
                     router responds to request, accepting or denying it. if accepted, includes the assigned task id
 
-ResultData      --> (int[][] resultMatrix, int m (the subtask), int taskId)
+ResultData      --> (int[][] resultMatrix, int m (the subtask), int taskId, List<Timestamp> timestamps)
                     server sends to router upon successful matrix multiplication, router forwards to client thread where it accumulates
                     until all subtasks are complete. subtasks are combined then a result data is sent to the client with the final matrix
 
@@ -64,8 +64,20 @@ Timestamps
 "result sent by router"
 "result received by client"
 
+Calculated Metrics
+"total time"
+"server processing time"
+"router dividing time"
+"total processing time"
+"total networking time"
+networking/processing overlap
 
-
-
-
-
+Views
+Total Time
+Processing Time
+Networking Time
+Networking-Processing Overlap Ratio (exluding client networking time)
+Speedup (exluding client networking time)
+Efficiency (exluding client networking time)
+Speedup (including client networking time)
+Efficiency (including client networking time)
