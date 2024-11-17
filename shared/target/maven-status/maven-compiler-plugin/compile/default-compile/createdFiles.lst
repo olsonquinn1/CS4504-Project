@@ -2,6 +2,7 @@ com\project\shared\MatrixUtil.class
 com\project\shared\BufferedLogHandler$2.class
 com\project\shared\Data$Type.class
 com\project\shared\ResultData.class
+com\project\shared\Timestamp.class
 com\project\shared\StrassenExecutor.class
 com\project\shared\Test.class
 com\project\shared\Data.class

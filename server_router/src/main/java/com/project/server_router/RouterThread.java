@@ -6,8 +6,6 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.List;
 
-import javafx.application.Platform;
-
 /**
  * The abstract class representing a router thread.
  * This class extends the Thread class and provides common functionality for router threads.
@@ -59,6 +57,5 @@ public abstract class RouterThread extends Thread {
     public void closeConnection() throws IOException {
         myConnection.close();
         routingTable.remove(myConnection);
-        Platform.runLater(() -> routerApp.updateConnectionLists());
     }
 }

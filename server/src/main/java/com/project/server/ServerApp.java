@@ -8,6 +8,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -21,6 +23,7 @@ import com.project.shared.ProgressBar;
 import com.project.shared.ResultData;
 import com.project.shared.StrassenExecutor;
 import com.project.shared.SubTaskData;
+import com.project.shared.Timestamp;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -135,7 +138,7 @@ public class ServerApp extends Application {
         tf_port.setText("5555");
 
         //initialize log
-        logHandler = new BufferedLogHandler(ta_log, 1000);
+        logHandler = new BufferedLogHandler(ta_log, 50);
         log = logHandler.getLogStream();
 
         //run profiling in a separate thread
@@ -202,10 +205,10 @@ public class ServerApp extends Application {
      */
     public double profileComputeCapability() {
 
-        progressBar = new ProgressBar(50, 50, log);
-
         int numTests = 20;
         int matrixSize = 512;
+
+        progressBar = new ProgressBar(numTests, 50, log);
 
         long[] times = new long[numTests];
 
@@ -340,11 +343,15 @@ public class ServerApp extends Application {
 
         log.println("Processing Task " + subtask.getTaskId() + " - " + subtask.getM());
 
+        List<Timestamp> timestamps = new ArrayList<>();
+
         //log matrix sizes
         log.println("Matrix A: " + subtask.getMatrixA().length + "x" + subtask.getMatrixA()[0].length);
         log.println("Matrix B: " + subtask.getMatrixB().length + "x" + subtask.getMatrixB()[0].length);
 
         StrassenExecutor executor = new StrassenExecutor(subtask.getCoresToUse(), 64);
+
+        timestamps.add(new Timestamp("M" + (subtask.getM() + 1) + " received by server"));
 
         int[][] result = null;
         try {
@@ -357,10 +364,13 @@ public class ServerApp extends Application {
             log.println("Error running Strassen algorithm (2): " + e.getMessage());
         }
 
+        timestamps.add(new Timestamp("M" + (subtask.getM() + 1) + " sent by server"));
+
         ResultData resultData = new ResultData(
             result,
             subtask.getM(),
-            subtask.getTaskId()
+            subtask.getTaskId(),
+            timestamps
         );
 
         Data send = new Data(

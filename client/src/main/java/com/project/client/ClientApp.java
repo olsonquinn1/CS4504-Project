@@ -8,6 +8,10 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -16,7 +20,9 @@ import com.project.shared.Data;
 import static com.project.shared.MatrixUtil.generateSquareMatrix;
 import com.project.shared.RequestData;
 import com.project.shared.ResponseData;
+import com.project.shared.ResultData;
 import com.project.shared.TaskData;
+import com.project.shared.Timestamp;
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -28,6 +34,7 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
@@ -56,6 +63,9 @@ public class ClientApp extends Application {
     private Thread readThread;
     private Thread writeThread;
 
+    //maps taskId to timestamps
+    private final Map<Integer, List<Timestamp>> timestamps = new HashMap<>();
+
     @FXML
     private TextField tf_addr;
     @FXML
@@ -68,6 +78,8 @@ public class ClientApp extends Application {
     private ChoiceBox<Integer> cb_mat_size;
     @FXML
     private ChoiceBox<Integer> cb_thread_count;
+    @FXML
+    private TableView<String> tv_analysis;
 
     public static void main(String[] args) {
         launch(args);
@@ -132,15 +144,18 @@ public class ClientApp extends Application {
         tf_port.setText("5556");
 
         //initialize log
-        logHandler = new BufferedLogHandler(ta_log, 100);
+        logHandler = new BufferedLogHandler(ta_log, 50);
         log = logHandler.getLogStream();
 
         //test scenarios
-        cb_mat_size.getItems().addAll(1024, 2048, 4096, 8192);
-        cb_mat_size.setValue(1024);
+        cb_mat_size.getItems().addAll(512, 1024, 2048, 4096, 8192);
+        cb_mat_size.setValue(512);
 
         cb_thread_count.getItems().addAll(1, 3, 7, 15, 31);
         cb_thread_count.setValue(1);
+
+        //initialize the table
+        //TableColumn<TableRowData, String> 
     }
 
     /**
@@ -176,6 +191,8 @@ public class ClientApp extends Application {
 
             //check for result message
             if(recv.getType() == Data.Type.RESULT_DATA) {
+                ResultData result = (ResultData) recv.getData();
+                timestamps.get(result.getTaskId()).add(new Timestamp("result received by client"));
                 log.println("Received result from server");
             }
         }
@@ -232,10 +249,14 @@ public class ClientApp extends Application {
         //prepare task data and send it out
         TaskData task = new TaskData(A, B, resp.getTaskId(), cb_thread_count.getValue());
 
+        timestamps.put(resp.getTaskId(), new ArrayList<>());
+
         Data data = new Data(
             Data.Type.TASK_DATA,
             task
         );
+
+        timestamps.get(resp.getTaskId()).add(new Timestamp("task sent by client"));
 
         outBuffer.add(data);
     }
@@ -350,7 +371,7 @@ public class ClientApp extends Application {
             return;
         }
 
-        lb_conn_status.setText("Connected to " + routerAddr + ":" + routerPort);
+        lb_conn_status.setText("Connected\n" + routerAddr + ":" + routerPort);
 
         log.println("Connected to " + routerAddr + ":" + routerPort);
     }

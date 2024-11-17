@@ -7,6 +7,8 @@ import java.io.Serializable;
  */
 public class SubTaskData implements Serializable {
     
+    private static final long serialVersionUID = 1L;
+
     private final int[][] matrixA;
     private final int[][] matrixB;
     private final int m;
@@ -61,9 +63,9 @@ public class SubTaskData implements Serializable {
     }
 
     /**
-     * Returns the size of the matrices.
+     * Returns the M value this subtask is calculating.
      * 
-     * @return the size of the matrices
+     * @return the M value (0-based)
      */
     public int getM() {
         return m;

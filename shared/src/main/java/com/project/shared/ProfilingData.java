@@ -7,6 +7,9 @@ import java.io.Serializable;
  * It contains information about the core count and speed rating of the system.
  */
 public class ProfilingData implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
     private final int coreCount;
     private final double speedRating;
 

@@ -140,26 +140,17 @@ public class Connection {
      * Adds a new task to the connection.
      * 
      * @param taskId The ID of the task to add.
-     * @throws Exception if the task already exists.
      */
-    public void addNewTask(int taskId) throws Exception {
-        if (tasks.containsKey(taskId)) {
-            throw new Exception("Task already exists");
-        } else {
-            tasks.put(taskId, 0);
-        }
+    public void addNewTask(int taskId) {
+        tasks.put(taskId, 0);
     }
 
     /**
      * Removes a task from the connection.
      * 
      * @param taskId The ID of the task to remove.
-     * @throws Exception if the task does not exist.
      */
-    public void removeTask(int taskId) throws Exception {
-        if(!tasks.containsKey(taskId)) {
-            throw new Exception("Task does not exist");
-        }
+    public void removeTask(int taskId) {
         tasks.remove(taskId);
     }
 
@@ -168,14 +159,11 @@ public class Connection {
      * 
      * @param taskId The ID of the task.
      * @param count The number of subtasks to decrement.
-     * @throws Exception if the task does not exist.
      */
-    public void decrementTask(int taskId, int count) throws Exception {
+    public void decrementTask(int taskId, int count) {
         if (tasks.containsKey(taskId)) {
             int remaining = tasks.get(taskId) - count;
             tasks.put(taskId, remaining);
-        } else {
-            throw new Exception("Task does not exist");
         }
     }
 
@@ -184,13 +172,10 @@ public class Connection {
      * 
      * @param taskId The ID of the task.
      * @param count The number of subtasks to increment.
-     * @throws Exception if the task does not exist.
      */
-    public void incrementTask(int taskId, int count) throws Exception {
+    public void incrementTask(int taskId, int count) {
         if (tasks.containsKey(taskId)) {
             tasks.put(taskId, tasks.get(taskId) + count);
-        } else {
-            throw new Exception("Task does not exist");
         }
     }
 
@@ -205,6 +190,16 @@ public class Connection {
             total += i;
         }
         return total;
+    }
+
+    /**
+     * Returns the number of remaining tasks for the given task ID.
+     *
+     * @param taskId the ID of the task
+     * @return the number of remaining tasks for the given task ID
+     */
+    public int getTasksRemaining(int taskId) {
+        return tasks.get(taskId);
     }
 
     /**

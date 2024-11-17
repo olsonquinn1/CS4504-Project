@@ -2,8 +2,11 @@ package com.project.server_router;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.project.shared.Data;
 import static com.project.shared.MatrixUtil.divideIntoQuadrants;
@@ -13,6 +16,7 @@ import com.project.shared.ResultData;
 import com.project.shared.StrassenExecutor;
 import com.project.shared.SubTaskData;
 import com.project.shared.TaskData;
+import com.project.shared.Timestamp;
 
 /**
  * Extends the `RouterThread` class and represents a thread that handles communication with a client.
@@ -24,16 +28,14 @@ public class ClientThread extends RouterThread {
     private Thread dataQueueThread;
     private Thread socketThread;
 
-    private int[][][] resultMatrices;
-    private boolean[] resultStatus;
+    private final Map<Integer, int[][][]> taskMatrices = new HashMap<>();
+    private final Map<Integer, List<Timestamp>> taskTimestamps = new HashMap<>();
 
     public ClientThread(Socket clientSocket, List<Connection> routingTable, RouterApp routerApp) throws IOException {
         super(clientSocket, routingTable, false, routerApp);
     }
 
     public void run() {
-
-        routerApp.updateConnectionLists();
 
         dataQueueThread = new Thread(this::dataQueueLoop);
         socketThread = new Thread(this::socketLoop);
@@ -154,6 +156,10 @@ public class ClientThread extends RouterThread {
 
         log("Request accepted, task id: " + taskId);
 
+        taskTimestamps.put(taskId, new ArrayList<>());
+        myConnection.addNewTask(taskId);
+        myConnection.incrementTask(taskId, 7);
+
         //send confirmation to client
         ResponseData resp = new ResponseData("Task " + taskId + " started", true, taskId);
         Data send = new Data(Data.Type.RESPONSE, resp);
@@ -188,6 +194,8 @@ public class ClientThread extends RouterThread {
             return;
         }
 
+        taskTimestamps.get(task.getTaskId()).add(new Timestamp("task received by router"));
+
         log("Processing task... " + task.getTaskId());
         log("Received 2 matrices of size " + task.getMatrixA().length + "x" + task.getMatrixA()[0].length);
 
@@ -212,8 +220,8 @@ public class ClientThread extends RouterThread {
 
         subMatrices = null;
 
-        resultMatrices = new int[7][][];
-        resultStatus = new boolean[] {false, false, false, false, false, false, false};
+        taskMatrices.put(taskId, new int[7][][]);
+        taskTimestamps.get(taskId).add(new Timestamp("task divided by router"));
 
         int tasksPerServer = subTasks.size() / serverCount;
         int remainder = subTasks.size() % serverCount;
@@ -240,6 +248,9 @@ public class ClientThread extends RouterThread {
             int taskCount = tasksPerServer + (s < remainder ? 1 : 0);
             Connection server = myServers.get(s);
 
+            server.addNewTask(taskId);
+            server.incrementTask(taskId, taskCount);
+
             for(int t = 0; t < taskCount; t++) {
 
                 SubTaskData subTask = subTasks.get(taskIndex++);
@@ -252,6 +263,8 @@ public class ClientThread extends RouterThread {
                     log("Failed to send subtask to ServerThread");
                     Thread.currentThread().interrupt();
                 }
+
+                taskTimestamps.get(taskId).add(new Timestamp("M" + (subTask.getM() + 1) + " sent to server"));
             }
         }
     }
@@ -280,22 +293,22 @@ public class ClientThread extends RouterThread {
             return;
         }
 
-        resultMatrices[subTaskId] = result.getResultMatrix();
-        resultStatus[subTaskId] = true;
+        taskTimestamps.get(taskId).add(new Timestamp("M" + (subTaskId + 1) + " received by router"));
+        taskMatrices.get(taskId)[subTaskId] = result.getResultMatrix();
 
-        boolean complete = true;
-        for(boolean b : resultStatus) {
-            if(!b) {
-                complete = false;
-                break;
-            }
-        }
+        myConnection.decrementTask(taskId, 1);
 
-        if(complete) {
+        if(myConnection.getTasksRemaining(taskId) == 0) {
+
             //all results received, combine and send to client
-            int[][] resultMatrix = StrassenExecutor.combineMatricesFromM(resultMatrices);
+            int[][] resultMatrix = StrassenExecutor.combineMatricesFromM(taskMatrices.get(taskId));
 
-            ResultData resultData = new ResultData(resultMatrix, -1, taskId);
+            taskTimestamps.get(taskId).add(new Timestamp("result sent by router"));
+
+            ResultData resultData = new ResultData(
+                resultMatrix, -1, taskId,
+                taskTimestamps.get(taskId)
+            );
 
             Data send = new Data(Data.Type.RESULT_DATA, resultData);
 
@@ -305,6 +318,9 @@ public class ClientThread extends RouterThread {
             } catch (IOException e) {
                 log("Failed to send result to client");
             }
+
+            myConnection.removeTask(taskId);
+            taskTimestamps.remove(taskId);
         }
     }
 

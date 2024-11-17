@@ -50,3 +50,22 @@ SubTaskData     --> (int[][][] matrices, int m, int taskId)
 
 TaskData        --> (int[][] matrixA, int[][] matrixB, int taskId)
                     client sends to router, contains the two matrices. router divides into 7 subtasks via strassen and distributes to servers
+
+
+
+Timestamps
+"task sent by client"
+"task received by router"
+"task divided by router"
+"M# sent to server"
+"M# received by server"
+"M# sent by server"
+"M# received by router"
+"result sent by router"
+"result received by client"
+
+
+
+
+
+

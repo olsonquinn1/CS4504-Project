@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -18,13 +20,18 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Text;
 import javafx.stage.Stage;
+import javafx.util.Callback;
 
 /**
  * The main class for the Router application.
@@ -50,6 +57,8 @@ public class RouterApp extends Application {
 
     public AtomicInteger connectionCounter = new AtomicInteger(0);
     public AtomicInteger taskCounter = new AtomicInteger(0);
+
+    private final Timer connListTimer = new Timer(true);
 
     @FXML
     private TextArea ta_log;
@@ -94,11 +103,78 @@ public class RouterApp extends Application {
     @FXML
     private void initialize() {
 
-        logHandler = new BufferedLogHandler(ta_log, 100);
+        logHandler = new BufferedLogHandler(ta_log, 50);
         log = logHandler.getLogStream();
 
         startListener(serverListener, listenSocket_server, serverPort, true);
         startListener(clientListener, listenSocket_client, clientPort, false);
+
+        setConnectionListCellFactory(lv_servers);
+        setConnectionListCellFactory(lv_clients);
+
+        //update connection lists every 500ms
+        connListTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                ObservableList<String> servers = FXCollections.observableArrayList(
+                    routingTable.stream()
+                            .filter(conn -> conn.isServer())
+                            .map(conn ->
+                                conn.getAddr() + ":" + conn.getPort()
+                                + "(" + conn.getLogicalCores() + ", " + conn.getSpeedRating() + ")"
+                                + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")" : "\nNo Active Tasks")
+                            )
+                            .collect(Collectors.toList()));
+        
+                ObservableList<String> clients = FXCollections.observableArrayList(
+                        routingTable.stream()
+                                .filter(conn -> !conn.isServer())
+                                .map(conn ->
+                                    conn.getAddr() + ":" + conn.getPort()
+                                    + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")" : "\nNo Active Tasks")
+                                )
+                                .collect(Collectors.toList()));
+        
+                Platform.runLater(() -> lv_servers.setItems(servers));
+                Platform.runLater(() -> lv_clients.setItems(clients));
+        
+                Platform.runLater(() -> lv_servers.refresh());
+                Platform.runLater(() -> lv_clients.refresh());
+            }
+        }, 0, 500);
+    }
+
+    private void setConnectionListCellFactory(ListView<String> listView) {
+        listView.setCellFactory(new Callback<ListView<String>, ListCell<String>>() {
+            @Override
+            public ListCell<String> call(ListView<String> param) {
+                return new ListCell<String>() {
+                    private final Text text;
+                    private final VBox vbox;
+
+                    {
+                        text = new Text();
+                        text.setStyle("-fx-font-size: 12px;");
+                        text.setWrappingWidth(200); // Adjust width as needed
+                        setPrefHeight(50); // Adjust height to fit two lines
+
+                        vbox = new VBox(text);
+                        vbox.setAlignment(Pos.CENTER);
+                    }
+
+                    @Override
+                    protected void updateItem(String item, boolean empty) {
+                        super.updateItem(item, empty);
+                        if (empty || item == null) {
+                            setGraphic(null);
+                        } else {
+                            text.setText(item);
+                            setGraphic(vbox);
+                        }
+                    }
+                };
+            }
+        });
     }
 
     /**
@@ -143,38 +219,6 @@ public class RouterApp extends Application {
         }
 
         log.println("Listener started on port: " + port);
-    }
-
-    /**
-     * Updates the connection lists for servers and clients.
-     * This method retrieves the necessary information from the routing table
-     * and updates the observable lists for servers and clients accordingly.
-     */
-    public synchronized void updateConnectionLists() {
-
-        ObservableList<String> servers = FXCollections.observableArrayList(
-                routingTable.stream()
-                        .filter(conn -> conn.isServer())
-                        .map(conn ->
-                            conn.getAddr() + ":" + conn.getPort()
-                            + "(" + conn.getLogicalCores() + ", " + conn.getSpeedRating() + ")"
-                            + (conn.getTotalTasks() > 0 ? " (in use: " + conn.getTasksString() + ")" : "")
-                        )
-                        .collect(Collectors.toList()));
-
-        ObservableList<String> clients = FXCollections.observableArrayList(
-                routingTable.stream()
-                        .filter(conn -> !conn.isServer())
-                        .map(conn ->
-                            conn.getAddr() + ":" + conn.getPort()
-                        )
-                        .collect(Collectors.toList()));
-
-        Platform.runLater(() -> lv_servers.setItems(servers));
-        Platform.runLater(() -> lv_clients.setItems(clients));
-
-        Platform.runLater(() -> lv_servers.refresh());
-        Platform.runLater(() -> lv_clients.refresh());
     }
 
     /**
@@ -246,8 +290,6 @@ public class RouterApp extends Application {
             }
         }
 
-        updateConnectionLists();
-
         return taskId;
     }
 
@@ -279,7 +321,6 @@ public class RouterApp extends Application {
      */
     public void removeConnection(Connection conn) {
         routingTable.remove(conn);
-        updateConnectionLists();
     }
 
     /**

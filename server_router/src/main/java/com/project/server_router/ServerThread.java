@@ -8,8 +8,6 @@ import com.project.shared.Data;
 import com.project.shared.ProfilingData;
 import com.project.shared.ResultData;
 
-import javafx.application.Platform;
-
 /**
  * Extends the `RouterThread` class and represents a thread that handles communication
  * with a server.
@@ -72,8 +70,6 @@ public class ServerThread extends RouterThread {
             }
             return;
         }
-
-        Platform.runLater(() -> routerApp.updateConnectionLists());
 
         //start reader loops
         dataQueueThread = new Thread(this::dataQueueLoop);
@@ -192,6 +188,12 @@ public class ServerThread extends RouterThread {
             client.dataQueue.put(new Data(Data.Type.RESULT_DATA, result));
         } catch (InterruptedException e) {
             log("Failed to forward result to client");
+        }
+
+        myConnection.decrementTask(taskId, 1);
+
+        if(myConnection.getTasksRemaining(taskId) == 0) {
+            myConnection.removeTask(taskId);
         }
     }
 
