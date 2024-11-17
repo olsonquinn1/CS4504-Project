@@ -11,10 +11,20 @@ public class RequestData implements Serializable {
 
     private final int threadCount;
 
+    /**
+     * Constructs a new RequestData object with the specified thread count.
+     *
+     * @param threadCount the number of threads to be used for the operation
+     */
     public RequestData(int threadCount) {
         this.threadCount = threadCount;
     }
 
+    /**
+     * Returns the number of threads specified for the operation.
+     *
+     * @return the thread count
+     */
     public int getThreadCount() {
         return threadCount;
     }

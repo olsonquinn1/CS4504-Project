@@ -5,6 +5,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
 
+/**
+ * The ListenThread class represents a thread that listens for incoming connections on a server socket.
+ * It accepts incoming connections and creates separate threads to handle the communication with each client.
+ */
 public class ListenThread extends Thread {
 
     private final ServerSocket listenSocket;
@@ -19,7 +23,16 @@ public class ListenThread extends Thread {
         this.isServer = isServer;
     }
 
+    /**
+     * Listens for incoming socket connections and handles them accordingly.
+     * If the current instance is a server, it creates a new ServerThread to handle the connection.
+     * If the current instance is a client, it creates a new ClientThread to handle the connection.
+     * Writes information about the accepted connection to the console.
+     * 
+     * @throws IOException if an I/O error occurs while accepting the connection
+     */
     public void run() {
+
         try {
             while (true) {
                 Socket incomingSocket = listenSocket.accept();

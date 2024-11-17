@@ -17,16 +17,16 @@ build:
 to run a particular module:
 
 Server Router:
-mvn -pl server_router exec:java "-Dexec.mainClass=com.project.server_router.RouterApp"
+mvn -pl server_router exec:java
 
 Server:
-mvn -pl server exec:java "-Dexec.mainClass=com.project.server.ServerApp"
+mvn -pl server exec:java
 
 Client:
-mvn -pl client exec:java "-Dexec.mainClass=com.project.client.ClientApp"
+mvn -pl client exec:java
 
 Test:
-mvn -pl shared exec:java "-Dexec.mainClass=com.project.shared.Test"
+mvn -pl shared exec:java "-Dexec.mainClass=com.project.shared.Test" "-Dexec.args=" (if needed)
 
 
 Data communication structures

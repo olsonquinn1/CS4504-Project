@@ -197,6 +197,13 @@ public class StrassenExecutor {
         return C;
     }
 
+    /**
+     * Creates a task and submits it to the executor if there are not too many active tasks.
+     * If there are already too many active tasks, the task will be run sequentially.
+     *
+     * @param task The task to be executed.
+     * @return A Future representing the pending completion of the task, or null if the task cannot be submitted.
+     */
     private Future<int[][]> createTaskIfNeeded(Callable<int[][]> task) {
         synchronized (activeTasksLock) {
             if (activeTasks < nThreads) {
@@ -207,6 +214,14 @@ public class StrassenExecutor {
         return null; // Run sequentially if too many active tasks
     }
 
+    /**
+     * Extracts the result from a Future or executes a sequential task if the Future is null.
+     *
+     * @param future          The Future representing the asynchronous computation.
+     * @param sequentialTask  The Callable representing the sequential task to be executed.
+     * @return The result of the asynchronous computation or the result of the sequential task.
+     * @throws Exception if an error occurs during the execution of the sequential task.
+     */
     private int[][] extractResult(Future<int[][]> future, Callable<int[][]> sequentialTask) throws Exception {
         if (future != null) {
             try {

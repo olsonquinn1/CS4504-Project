@@ -3,7 +3,6 @@ package com.project.client;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -12,6 +11,7 @@ import java.net.UnknownHostException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import com.project.shared.BufferedLogHandler;
 import com.project.shared.Data;
 import static com.project.shared.MatrixUtil.generateSquareMatrix;
 import com.project.shared.RequestData;
@@ -24,21 +24,24 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 
+/**
+ * The main class for the client application.
+ * This class handles the GUI and the client-side logic for connecting to the router and sending requests.
+ */
 public class ClientApp extends Application {
 
     private Socket socket = null;
 
     private ObjectOutputStream out = null;
     private ObjectInputStream in = null;
-
-    private String myAddr = null;
-    private int myPort = -1;
 
     private String routerAddr = null;
     private int routerPort = -1;
@@ -47,9 +50,11 @@ public class ClientApp extends Application {
 
     private final BlockingQueue<Data> outBuffer = new LinkedBlockingQueue<>();
 
-    private final Object logLock = new Object();
-
+    private BufferedLogHandler logHandler;
     private PrintStream log;
+
+    private Thread readThread;
+    private Thread writeThread;
 
     @FXML
     private TextField tf_addr;
@@ -64,20 +69,14 @@ public class ClientApp extends Application {
     @FXML
     private ChoiceBox<Integer> cb_thread_count;
 
-    private enum STATE {
-        IDLE,
-        WAITING_FOR_CONFIRMATION,
-        WAITING_FOR_RESULT
-    }
-
-    private STATE state = STATE.IDLE;
-
     public static void main(String[] args) {
         launch(args);
     }
 
     @Override
     public void start(Stage stage) {
+
+        //load FXML file
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/client.fxml"));
         try {
             Parent root = loader.load();
@@ -86,14 +85,23 @@ public class ClientApp extends Application {
             primaryStage.setTitle("Client");
             primaryStage.setScene(scene);
             primaryStage.show();
+
+            //things to do on close
             primaryStage.setOnCloseRequest(event -> {
                 if (socket != null) {
                    closeConnections(true);
+                   if(logHandler != null) {
+                       logHandler.stop();
+                   }
                 }
                 System.exit(0);
-             });
+            });
         } catch (IOException e) {
-            e.printStackTrace();
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Error loading FXML file");
+            alert.setContentText(e.getMessage());
+            alert.showAndWait();
             System.exit(1);
         }
     }
@@ -101,10 +109,12 @@ public class ClientApp extends Application {
     @FXML
     public void initialize() {
 
+        //listener for address field
         tf_addr.textProperty().addListener((observable, oldValue, newValue) -> {
             routerAddr = newValue;
         });
 
+        //listener for port field, validates for integer input
         tf_port.textProperty().addListener((observable, oldValue, newValue) -> {
             try {
                 routerPort = Integer.parseInt(newValue);
@@ -121,57 +131,23 @@ public class ClientApp extends Application {
         tf_addr.setText("localhost");
         tf_port.setText("5556");
 
+        //initialize log
+        logHandler = new BufferedLogHandler(ta_log, 100);
+        log = logHandler.getLogStream();
+
+        //test scenarios
         cb_mat_size.getItems().addAll(1024, 2048, 4096, 8192);
         cb_mat_size.setValue(1024);
 
         cb_thread_count.getItems().addAll(1, 3, 7, 15, 31);
         cb_thread_count.setValue(1);
-
-        setUpLogStream(ta_log);
-
-        updateStatus();
     }
 
-    private void setUpLogStream(TextArea ta) {
-      OutputStream outStream = new OutputStream() {
-         @Override
-         public void write(int b) {
-            synchronized(logLock) {
-                ta.appendText(String.valueOf((char) b));
-            }
-         }
-
-         @Override
-         public void write(byte[] b, int off, int len) {
-            synchronized(logLock) {
-                ta.appendText(new String(b, off, len));
-            }
-         }
-      };
-
-      log = new PrintStream(outStream, true);
-    }
-
-    private void updateStatus() {
-        StringBuilder sb = new StringBuilder();
-
-        if (socket == null || socket.isClosed()) {
-            sb.append("Disconnected");
-        } else {
-            sb.append("Connected to ");
-            sb.append(routerAddr);
-            sb.append(":");
-            sb.append(routerPort);
-        }
-
-        sb.append("\n");
-        sb.append(state == STATE.WAITING_FOR_CONFIRMATION ? "Waiting for confirmation" : state == STATE.WAITING_FOR_RESULT ? "Waiting for result" : "Idle");
-
-        runOnFxThread(() -> {
-            lb_conn_status.setText(sb.toString());
-        });
-    }
-
+    /**
+     * Reads messages from the server continuously until a close message is received.
+     * Messages can be of type RESPONSE or RESULT_DATA.
+     * If a close message is received, the method will close the connections.
+     */
     private void readLoop() {
         while (true) {
 
@@ -181,8 +157,7 @@ public class ClientApp extends Application {
                 recv = (Data) in.readObject();
             } catch (ClassNotFoundException e) {
                 log.println("Error deserializing object from server: " + e.getMessage());
-                closeConnections(false);
-                break;
+                continue;
             } catch (IOException e) {
                 log.println("Error reading object from server: " + e.getMessage());
                 break;
@@ -191,71 +166,27 @@ public class ClientApp extends Application {
             //check for close message
             if(recv.getType() == Data.Type.CLOSE) {
                 log.println("Connection closed by server");
-                closeConnections(false);
                 break;
             }
 
             //check for response message
             if(recv.getType() == Data.Type.RESPONSE) {
-
-                //we should only get a response if we are waiting for confirmation
-                if(state != STATE.WAITING_FOR_CONFIRMATION) {
-                    log.println("Received unexpected response from server");
-                    continue;
-                }
-
-                ResponseData resp = (ResponseData)recv.getData();
-                if(resp.isSuccess()) {
-                    log.println("Server accepted request");
-                } else {
-                    log.println("Server rejected request: " + resp.getMessage());
-                    state = STATE.IDLE;
-                    updateStatus();
-                    continue;
-                }
-
-                //generate matrices and send to server
-                log.println("Generating matrices");
-
-                int[][] A = generateSquareMatrix(cb_mat_size.getValue());
-                int[][] B = generateSquareMatrix(cb_mat_size.getValue());
-
-                log.println("Matrices generated, sending to server");
-
-                TaskData task = new TaskData(A, B, resp.getTaskId(), cb_thread_count.getValue());
-
-                Data data = new Data(
-                    Data.Type.TASK_DATA,
-                    task
-                );
-
-                outBuffer.add(data);
-
-                state = STATE.WAITING_FOR_RESULT;
-
-                updateStatus();
+                handleResponse((ResponseData) recv.getData());
             }
 
             //check for result message
             if(recv.getType() == Data.Type.RESULT_DATA) {
-
-                //we should only get a result if we are waiting for a result
-                if(state != STATE.WAITING_FOR_RESULT) {
-                    log.println("Received unexpected result from server");
-                    continue;
-                }
-
                 log.println("Received result from server");
-
-                //other stuff here
-
-                state = STATE.IDLE;
-
-                updateStatus();
             }
         }
+
+        closeConnections(false);
     }
 
+    /**
+     * Continuously writes data from the output buffer to the server.
+     * This method runs in a loop until interrupted or an error occurs.
+     */
     private void writeLoop() {
         while(true) {
             Data data = null;
@@ -275,6 +206,47 @@ public class ClientApp extends Application {
         }
     }
 
+    /**
+     * Handles the response received from the server.
+     * If the response is successful, generates matrices and sends them to the server.
+     * If the response is unsuccessful, logs the rejection message from the server.
+     *
+     * @param resp The response data received from the server.
+     */
+    private void handleResponse(ResponseData resp) {
+
+        if(!resp.isSuccess()) {
+            log.println("Server rejected request: " + resp.getMessage());
+            return;
+        }
+        log.println("Server accepted request");
+
+        //generate matrices and send to server
+        log.println("Generating matrices");
+
+        int[][] A = generateSquareMatrix(cb_mat_size.getValue());
+        int[][] B = generateSquareMatrix(cb_mat_size.getValue());
+
+        log.println("Matrices generated, sending to server");
+
+        //prepare task data and send it out
+        TaskData task = new TaskData(A, B, resp.getTaskId(), cb_thread_count.getValue());
+
+        Data data = new Data(
+            Data.Type.TASK_DATA,
+            task
+        );
+
+        outBuffer.add(data);
+    }
+
+    /**
+     * Connects to the router using the specified address and port.
+     * 
+     * @throws IOException           if there is an error connecting to the router
+     * @throws UnknownHostException if the router address is unknown
+     * @throws SocketTimeoutException if the connection to the router times out
+     */
     public void connectToRouter() throws IOException, UnknownHostException, SocketTimeoutException {
 
         if (routerAddr == null || routerPort == -1) {
@@ -292,17 +264,23 @@ public class ClientApp extends Application {
         out = new ObjectOutputStream(socket.getOutputStream());
         in = new ObjectInputStream(socket.getInputStream());
 
-        myAddr = socket.getLocalAddress().getHostAddress();
-        myPort = socket.getLocalPort();
+        //start read and write threads
+        readThread = new Thread(this::readLoop);
+        writeThread = new Thread(this::writeLoop);
 
-        new Thread(this::readLoop).start();
-        new Thread(this::writeLoop).start();
+        readThread.start();
+        writeThread.start();
 
         // set addr and port fields to uneditable
-        runOnFxThread(() -> tf_addr.setEditable(false));
-        runOnFxThread(() -> tf_port.setEditable(false));
+        Platform.runLater(() -> tf_addr.setEditable(false));
+        Platform.runLater(() -> tf_port.setEditable(false));
     }
 
+    /**
+     * Closes the connections to the router.
+     * 
+     * @param sendMessage a boolean indicating whether to send a close message to the router
+     */
     public void closeConnections(boolean sendMessage) {
 
         if (socket == null || socket.isClosed() || out == null || in == null) {
@@ -318,6 +296,13 @@ public class ClientApp extends Application {
             );
 
             outBuffer.add(close);
+            
+            //sleep for a bit to allow the message to be sent
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                log.println("Error sleeping: " + e.getMessage());
+            }
         }
         
         try {
@@ -331,10 +316,16 @@ public class ClientApp extends Application {
         log.println("Disconnected from router");
 
         // set addr and port fields to editable
-        runOnFxThread(() -> tf_addr.setEditable(true));
-        runOnFxThread(() -> tf_port.setEditable(true));
+        Platform.runLater(() -> tf_addr.setEditable(true));
+        Platform.runLater(() -> tf_port.setEditable(true));
     }
 
+    /**
+     * Handles the event when the connect button is clicked.
+     * Attempts to connect to the specified router address and port.
+     * If the connection is successful, updates the status and logs the connection details.
+     * If an error occurs during the connection, displays an error message and logs the error details.
+     */
     @FXML
     public void connectButtonClicked() {
 
@@ -344,31 +335,40 @@ public class ClientApp extends Application {
             connectToRouter();
         }
         catch (UnknownHostException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Host not found"));
+            lb_conn_status.setText("Host not found");
             log.println(routerAddr + ":" + routerPort + " Host not found");
             return;
         }
         catch (SocketTimeoutException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Connection timed out"));
+            lb_conn_status.setText("Connection timed out");
             log.println(routerAddr + ":" + routerPort + " Connection timed out");
             return;
         }
         catch (IOException e) {
-            runOnFxThread(() -> lb_conn_status.setText("Error connecting to router: " + e.getMessage()));
+            lb_conn_status.setText("Error connecting to router: " + e.getMessage());
             log.println(routerAddr + ":" + routerPort + " Error connecting to router: " + e.getMessage());
             return;
         }
 
-        updateStatus();
+        lb_conn_status.setText("Connected to " + routerAddr + ":" + routerPort);
+
         log.println("Connected to " + routerAddr + ":" + routerPort);
     }
 
+    /**
+     * Handles the event when the disconnect button is clicked.
+     * Closes the connections and updates the status.
+     */
     @FXML
     public void disconnectButtonClicked() {
         closeConnections(true);
-        updateStatus();
+        lb_conn_status.setText("Disconnected");
     }
 
+    /**
+     * Handles the event when the send button is clicked.
+     * Sends a request to the router if connected, otherwise logs an error message.
+     */
     @FXML
     public void sendButtonClicked() {
 
@@ -388,12 +388,5 @@ public class ClientApp extends Application {
 
         outBuffer.add(data);
         log.println("Request sent to router");
-
-        state = STATE.WAITING_FOR_CONFIRMATION;
-        updateStatus();
-    }
-
-    public synchronized void runOnFxThread(Runnable task) {
-        Platform.runLater(task);
     }
 }

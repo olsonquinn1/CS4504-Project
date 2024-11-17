@@ -1,7 +1,6 @@
 package com.project.server_router;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.util.ArrayList;
@@ -11,6 +10,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import com.project.shared.BufferedLogHandler;
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -19,36 +20,39 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.stage.Stage;
 
+/**
+ * The main class for the Router application.
+ * It initializes the GUI, starts the listener threads, and manages the routing table.
+ */
 public class RouterApp extends Application {
 
     private final int serverPort = 5555;
     private final int clientPort = 5556;
 
-    private ServerSocket listenSocket_server = null;
-    private ServerSocket listenSocket_client = null;
+    private ServerSocket listenSocket_server;
+    private ServerSocket listenSocket_client;
 
     private final List<Connection> routingTable = Collections.synchronizedList(new ArrayList<>());;
 
-    private ListenThread clientListener = null;
-    private ListenThread serverListener = null;
+    private ListenThread clientListener;
+    private ListenThread serverListener;
 
     private Stage primaryStage;
 
+    private BufferedLogHandler logHandler;
     private PrintStream log;
-    private final Object logLock = new Object();
 
     public AtomicInteger connectionCounter = new AtomicInteger(0);
     public AtomicInteger taskCounter = new AtomicInteger(0);
 
     @FXML
     private TextArea ta_log;
-    @FXML
-    private Label lb_conn_status;
     @FXML
     private ListView<String> lv_servers;
     @FXML
@@ -61,6 +65,7 @@ public class RouterApp extends Application {
     @Override
     public void start(Stage stage) {
 
+        //load FXML file
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/router.fxml"));
         try {
             Parent root = loader.load();
@@ -68,14 +73,20 @@ public class RouterApp extends Application {
             primaryStage = stage;
             primaryStage.setTitle("Router");
             primaryStage.setScene(scene);
+            primaryStage.show();
+
+            //things to do on close
             primaryStage.setOnCloseRequest(event -> {
                 closeConnections();
                 Platform.exit();
                 System.exit(0);
             });
-            primaryStage.show();
         } catch (IOException e) {
-            e.printStackTrace();
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Error loading FXML file");
+            alert.setContentText(e.getMessage());
+            alert.showAndWait();
             System.exit(1);
         }
     }
@@ -83,21 +94,34 @@ public class RouterApp extends Application {
     @FXML
     private void initialize() {
 
-        setUpLogStream(ta_log);
+        logHandler = new BufferedLogHandler(ta_log, 100);
+        log = logHandler.getLogStream();
 
         startListener(serverListener, listenSocket_server, serverPort, true);
         startListener(clientListener, listenSocket_client, clientPort, false);
     }
 
-    // sets up the listener thread
+    /**
+     * Starts the listener thread to listen for incoming connections on the specified port.
+     * If the server socket is not provided, it creates a new server socket on the specified port.
+     * If the listener thread is already running, it interrupts the current thread and starts a new one.
+     *
+     * @param listener     The current listener thread (can be null).
+     * @param serverSocket The server socket to listen on (can be null).
+     * @param port         The port number to listen on.
+     * @param isServer     Indicates whether the listener is running on a server or client.
+     */
     private void startListener(ListenThread listener, ServerSocket serverSocket, int port, boolean isServer) {
 
         if (serverSocket == null) {
             try {
                 serverSocket = new ServerSocket(port);
             } catch (IOException e) {
-                System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
-                e.printStackTrace();
+                Alert alert = new Alert(AlertType.ERROR);
+                alert.setTitle("Error");
+                alert.setHeaderText("Error starting listener");
+                alert.setContentText("Could not create socket on port: " + port + "\n" + e.getMessage());
+                alert.showAndWait();
                 System.exit(1);
             }
         }
@@ -110,14 +134,22 @@ public class RouterApp extends Application {
             listener = new ListenThread(serverSocket, routingTable, this, isServer);
             listener.start();
         } catch (IOException e) {
-            System.err.println("Could not listen on port: " + port + "\n" + e.getMessage());
-            e.printStackTrace();
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Error starting listener");
+            alert.setContentText("Could not listen on port: " + port + "\n" + e.getMessage());
+            alert.showAndWait();
             System.exit(1);
         }
 
         log.println("Listener started on port: " + port);
     }
 
+    /**
+     * Updates the connection lists for servers and clients.
+     * This method retrieves the necessary information from the routing table
+     * and updates the observable lists for servers and clients accordingly.
+     */
     public synchronized void updateConnectionLists() {
 
         ObservableList<String> servers = FXCollections.observableArrayList(
@@ -133,36 +165,22 @@ public class RouterApp extends Application {
         ObservableList<String> clients = FXCollections.observableArrayList(
                 routingTable.stream()
                         .filter(conn -> !conn.isServer())
-                        .map(conn -> conn.getAddr() + ":" + conn.getPort())
+                        .map(conn ->
+                            conn.getAddr() + ":" + conn.getPort()
+                        )
                         .collect(Collectors.toList()));
 
-        lv_servers.setItems(servers);
-        lv_clients.setItems(clients);
+        Platform.runLater(() -> lv_servers.setItems(servers));
+        Platform.runLater(() -> lv_clients.setItems(clients));
 
-        lv_servers.refresh();
-        lv_clients.refresh();
+        Platform.runLater(() -> lv_servers.refresh());
+        Platform.runLater(() -> lv_clients.refresh());
     }
 
-    private void setUpLogStream(TextArea ta) {
-        OutputStream outStream = new OutputStream() {
-           @Override
-           public void write(int b) {
-              synchronized(logLock) {
-                  ta.appendText(String.valueOf((char) b));
-              }
-           }
-  
-           @Override
-           public void write(byte[] b, int off, int len) {
-              synchronized(logLock) {
-                  ta.appendText(new String(b, off, len));
-              }
-           }
-        };
-        
-        log = new PrintStream(outStream, true);
-    }
-
+    /**
+     * public access for logging from client and server threads to the GUI.
+     * @param s
+     */
     public void writeToConsole(String s) {
         log.println(s);
     }
@@ -212,7 +230,7 @@ public class RouterApp extends Application {
             }
         }
 
-        //we can utilize a max of 7 servers per task
+        //we can utilize a max of 7 servers per task. It can be higher if I added logic to further split tasks, but 7 should suffice for this project.
         if(selectedServers.size() > 7) {
             throw new IOException("Can't allocate enough cores with max server size of 7");
         }
@@ -233,23 +251,42 @@ public class RouterApp extends Application {
         return taskId;
     }
 
+    /**
+     * Closes all connections and sockets used by the router application.
+     * This method closes the server socket, client socket, and all connections in the routing table.
+     */
     private void closeConnections() {
         try {
             if (listenSocket_server != null)
                 listenSocket_server.close();
             if (listenSocket_client != null)
                 listenSocket_client.close();
+            
+            //iterate through all connections and close them
+            for(Connection conn : routingTable) {
+                conn.close();
+            }
+
         } catch (IOException e) {
-            System.err.println("Error closing server and client sockets.");
             System.exit(1);
         }
     }
 
+    /**
+     * Removes the specified connection from the routing table.
+     *
+     * @param conn the connection to be removed
+     */
     public void removeConnection(Connection conn) {
         routingTable.remove(conn);
         updateConnectionLists();
     }
 
+    /**
+     * Returns a list of server connections sorted by the total number of tasks and speed rating.
+     *
+     * @return a list of server connections sorted by tasks and speed
+     */
     public List<Connection> getServersSortedByTasksThenSpeed() {
         return routingTable.stream()
                 .filter(Connection::isServer)
@@ -258,6 +295,12 @@ public class RouterApp extends Application {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Returns a list of connections representing servers that have the specified task ID.
+     *
+     * @param taskId the ID of the task
+     * @return a list of connections representing servers with the specified task ID
+     */
     public List<Connection> getServersByTaskId(int taskId) {
         return routingTable.stream()
                 .filter(Connection::isServer)
@@ -265,6 +308,12 @@ public class RouterApp extends Application {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves a list of server connections that have the specified task ID, sorted by tasks and then speed.
+     *
+     * @param taskId The ID of the task to filter the server connections by.
+     * @return A list of server connections that have the specified task ID, sorted by tasks and then speed.
+     */
     public List<Connection> getServersByTaskIdSorted(int taskId) {
         List<Connection> servers = getServersSortedByTasksThenSpeed();
         return servers.stream()
@@ -272,6 +321,12 @@ public class RouterApp extends Application {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retrieves a client connection that has the specified task ID.
+     *
+     * @param taskId The ID of the task to filter the client connections by.
+     * @return A client connection that has the specified task ID.
+     */
     public Connection getClientByTaskId(int taskId) {
         return routingTable.stream()
                 .filter(conn -> !conn.isServer())

@@ -8,6 +8,16 @@ import com.project.shared.Data;
 import com.project.shared.ProfilingData;
 import com.project.shared.ResultData;
 
+import javafx.application.Platform;
+
+/**
+ * Extends the `RouterThread` class and represents a thread that handles communication
+ * with a server.
+ * 
+ * Responsible for receiving profiling data from the server, updating the connection lists, and
+ * handling data and messages received from the server. It also handles closing the connection with the server
+ * and forwarding result data to the appropriate client.
+ */
 public class ServerThread extends RouterThread {
     
     private enum STATE {
@@ -63,7 +73,7 @@ public class ServerThread extends RouterThread {
             return;
         }
 
-        routerApp.updateConnectionLists();
+        Platform.runLater(() -> routerApp.updateConnectionLists());
 
         //start reader loops
         dataQueueThread = new Thread(this::dataQueueLoop);
@@ -73,6 +83,10 @@ public class ServerThread extends RouterThread {
         socketThread.start();
     }
 
+    /**
+     * This method continuously loops and waits for data in the data queue.
+     * When data is received, it checks the type of the data and performs the appropriate action.
+     */
     private void dataQueueLoop() {
         while (true) { 
             //wait for data in dataqueue
@@ -104,6 +118,10 @@ public class ServerThread extends RouterThread {
         socketThread.interrupt();
     }
 
+    /**
+     * Continuously listens for messages from the server and handles them accordingly.
+     * This method runs in a loop until a CLOSE message is received from the server.
+     */
     private void socketLoop() {
         while(true) {
             //wait for message from server
@@ -113,10 +131,8 @@ public class ServerThread extends RouterThread {
                 recv = (Data) in.readObject();
             } catch (ClassNotFoundException e) {
                 log("Failed to deserialize message from server");
-                continue;
             } catch (IOException e) {
                 log("Failed to receive message from server");
-                continue;
             }
 
             if(recv == null || recv.getType() == Data.Type.CLOSE) {
@@ -133,6 +149,11 @@ public class ServerThread extends RouterThread {
         dataQueueThread.interrupt();
     }
 
+    /**
+     * Closes the connection with the server.
+     * This method is called when the server requests to close the connection.
+     * It closes the connection and logs the closure.
+     */
     private void handleClose() {
         try {
             closeConnection();
@@ -142,6 +163,12 @@ public class ServerThread extends RouterThread {
         log("Connection closed by server");
     }
 
+    /**
+     * Handles the result data received from a task execution.
+     * It finds the client associated with the task ID and forwards the result to the client.
+     *
+     * @param result The result data to be handled.
+     */
     private void handleResult(ResultData result) {
         
         int taskId = result.getTaskId();

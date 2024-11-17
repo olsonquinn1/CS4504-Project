@@ -14,6 +14,11 @@ import com.project.shared.StrassenExecutor;
 import com.project.shared.SubTaskData;
 import com.project.shared.TaskData;
 
+/**
+ * Extends the `RouterThread` class and represents a thread that handles communication with a client.
+ * Receives messages from the client, processes them, and sends appropriate responses.
+ * Responsible for handling client requests, tasks, and results.
+ */
 public class ClientThread extends RouterThread {
 
     private Thread dataQueueThread;
@@ -36,8 +41,13 @@ public class ClientThread extends RouterThread {
         dataQueueThread.start();
         socketThread.start();
     }
-
+    
+    /**
+     * This method represents the main loop for receiving messages from the client.
+     * It continuously waits for messages from the client and handles them accordingly.
+     */
     private void socketLoop() {
+
         while (true) {
 
             //wait for message from client
@@ -66,6 +76,11 @@ public class ClientThread extends RouterThread {
         dataQueueThread.interrupt();
     }
 
+    /**
+     * This method represents the main loop for processing data received from the data queue.
+     * It continuously retrieves data from the queue and handles it accordingly until a CLOSE
+     * data type is received.
+     */
     private void dataQueueLoop() {
         while (true) { 
 
@@ -92,6 +107,11 @@ public class ClientThread extends RouterThread {
         socketThread.interrupt();
     }
 
+    /**
+     * Closes the connection with the client.
+     * This method is called when the client requests to close the connection.
+     * It closes the connection and logs the closure.
+     */
     private void handleClose() {
         try {
             closeConnection();
@@ -101,6 +121,11 @@ public class ClientThread extends RouterThread {
         log("Connection closed by client");
     }
 
+    /**
+     * Handles a request from the client.
+     *
+     * @param requ The request data containing the thread count.
+     */
     private void handleRequest(RequestData requ) {
 
         int threadCount = requ.getThreadCount();
@@ -148,6 +173,13 @@ public class ClientThread extends RouterThread {
         }
     }
 
+    /**
+     * Handles the matrix multiplication task from the client.
+     * 
+     * Divides and processes the input matrices into the 7 pairs of submatrices required for calculation of M values in Strassen algorithm.
+     *
+     * @param task The task data containing the matrices and thread count.
+     */
     private void handleTask(TaskData task) {
 
         if(!myConnection.hasTaskId(task.getTaskId())) {
@@ -224,6 +256,13 @@ public class ClientThread extends RouterThread {
         }
     }
 
+    /**
+     * Handles the result received from the servers.
+     * 
+     * Combines the results from the 7 submatrices and sends the final result to the client.
+     *
+     * @param result The result data received from the server.
+     */
     private void handleResult(ResultData result) {
 
         int taskId = result.getTaskId();
@@ -269,6 +308,12 @@ public class ClientThread extends RouterThread {
         }
     }
 
+    /**
+     * Divides the given matrices into submatrices and returns an array of submatrices.
+     *
+     * @param task The task data containing the matrices.
+     * @return An array of submatrices. size [2][n/2][n/2]
+     */
     private int[][][] getSubMatrices(TaskData task) {
         int[][][] matrices = new int[2][][];
         matrices[0] = task.getMatrixA();
