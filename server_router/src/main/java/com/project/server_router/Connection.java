@@ -23,6 +23,7 @@ public class Connection {
 
     //map task id to remaining subtasks (key is the task id, value is the number of subtasks remaining)
     private final Map<Integer, Integer> tasks;
+    private final Map<Integer, Integer> taskCores;
 
     private final RouterThread myThread;
 
@@ -46,6 +47,9 @@ public class Connection {
         dataQueue = new LinkedBlockingQueue<Data>();
 
         tasks = new ConcurrentHashMap<>();
+
+        taskCores = new ConcurrentHashMap<>();
+
         this.id = id;
 
         addr = socket.getInetAddress().getHostAddress();
@@ -141,8 +145,9 @@ public class Connection {
      * 
      * @param taskId The ID of the task to add.
      */
-    public void addNewTask(int taskId) {
+    public void addNewTask(int taskId, int coreCount) {
         tasks.put(taskId, 0);
+        taskCores.put(taskId, coreCount);
     }
 
     /**
@@ -152,6 +157,11 @@ public class Connection {
      */
     public void removeTask(int taskId) {
         tasks.remove(taskId);
+        taskCores.remove(taskId);
+    }
+
+    public int getTaskCores(int taskId) {
+        return taskCores.get(taskId);
     }
 
     /**
@@ -210,7 +220,7 @@ public class Connection {
     public String getTasksString() {
         StringBuilder sb = new StringBuilder();
         for (int i : tasks.keySet()) {
-            sb.append(i).append(": ").append(tasks.get(i)).append(", ");
+            sb.append(i).append(": ").append(tasks.get(i)).append("-").append(getTaskCores(i)).append(", ");
         }
         return sb.toString();
     }

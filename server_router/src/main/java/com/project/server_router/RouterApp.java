@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,9 +27,11 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.ChoiceBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Text;
 import javafx.scene.control.Label;
@@ -36,7 +40,8 @@ import javafx.util.Callback;
 
 /**
  * The main class for the Router application.
- * It initializes the GUI, starts the listener threads, and manages the routing table.
+ * It initializes the GUI, starts the listener threads, and manages the routing
+ * table.
  */
 public class RouterApp extends Application {
 
@@ -69,6 +74,8 @@ public class RouterApp extends Application {
     private ListView<String> lv_clients;
     @FXML
     private Label lb_conn_status;
+    @FXML
+    private ChoiceBox<String> cb_distribution_method;
 
     public static void main(String[] args) throws IOException {
         launch(args);
@@ -77,7 +84,7 @@ public class RouterApp extends Application {
     @Override
     public void start(Stage stage) {
 
-        //load FXML file
+        // load FXML file
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/router.fxml"));
         try {
             Parent root = loader.load();
@@ -87,7 +94,7 @@ public class RouterApp extends Application {
             primaryStage.setScene(scene);
             primaryStage.show();
 
-            //things to do on close
+            // things to do on close
             primaryStage.setOnCloseRequest(event -> {
                 closeConnections();
                 Platform.exit();
@@ -115,32 +122,33 @@ public class RouterApp extends Application {
         setConnectionListCellFactory(lv_servers);
         setConnectionListCellFactory(lv_clients);
 
-        //update connection lists every 500ms
+        cb_distribution_method.getItems().addAll("Balanced", "Front-Loaded");
+        cb_distribution_method.setValue("Balanced");
+
+        // update connection lists every 500ms
         connListTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
                 ObservableList<String> servers = FXCollections.observableArrayList(
-                    routingTable.stream()
-                            .filter(conn -> conn.isServer())
-                            .map(conn ->
-                                conn.getAddr() + ":" + conn.getPort()
-                                + "(" + conn.getLogicalCores() + ", " + conn.getSpeedRating() + ")"
-                                + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")" : "\nNo Active Tasks")
-                            )
-                            .collect(Collectors.toList()));
-        
+                        routingTable.stream()
+                                .filter(conn -> conn.isServer())
+                                .map(conn -> conn.getAddr() + ":" + conn.getPort()
+                                        + "(" + conn.getLogicalCores() + ", " + conn.getSpeedRating() + ")"
+                                        + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")"
+                                                : "\nNo Active Tasks"))
+                                .collect(Collectors.toList()));
+
                 ObservableList<String> clients = FXCollections.observableArrayList(
                         routingTable.stream()
                                 .filter(conn -> !conn.isServer())
-                                .map(conn ->
-                                    conn.getAddr() + ":" + conn.getPort()
-                                    + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")" : "\nNo Active Tasks")
-                                )
+                                .map(conn -> conn.getAddr() + ":" + conn.getPort()
+                                        + (conn.getTotalTasks() > 0 ? "\n(" + conn.getTasksString() + ")"
+                                                : "\nNo Active Tasks"))
                                 .collect(Collectors.toList()));
-        
+
                 Platform.runLater(() -> lv_servers.setItems(servers));
                 Platform.runLater(() -> lv_clients.setItems(clients));
-        
+
                 Platform.runLater(() -> lv_servers.refresh());
                 Platform.runLater(() -> lv_clients.refresh());
 
@@ -183,33 +191,40 @@ public class RouterApp extends Application {
     }
 
     /**
-     * Updates the status of the router application by displaying the number of connected servers and total core count,
+     * Updates the status of the router application by displaying the number of
+     * connected servers and total core count,
      * the number of clients, and the number of active tasks.
      */
     private void updateStatus() {
         StringBuilder sb = new StringBuilder();
-        //display # connected servers and total core count, and clients and # of active tasks
+        // display # connected servers and total core count, and clients and # of active
+        // tasks
         int serverCount = (int) routingTable.stream().filter(conn -> conn.isServer()).count();
-        int coreCount = routingTable.stream().filter(conn -> conn.isServer()).mapToInt(Connection::getLogicalCores).sum();
+        int coreCount = routingTable.stream().filter(conn -> conn.isServer()).mapToInt(Connection::getLogicalCores)
+                .sum();
         int clientCount = (int) routingTable.stream().filter(conn -> !conn.isServer()).count();
         int taskCount = (int) routingTable.stream().filter(conn -> conn.getTotalTasks() > 0).count();
 
         sb.append("Servers: ").append(serverCount).append(" (").append(coreCount).append(" cores)")
-            .append("\nClients: ").append(clientCount)
-            .append("\nTasks: ").append(taskCount);
+                .append("\nClients: ").append(clientCount)
+                .append("\nTasks: ").append(taskCount);
 
         Platform.runLater(() -> lb_conn_status.setText(sb.toString()));
     }
 
     /**
-     * Starts the listener thread to listen for incoming connections on the specified port.
-     * If the server socket is not provided, it creates a new server socket on the specified port.
-     * If the listener thread is already running, it interrupts the current thread and starts a new one.
+     * Starts the listener thread to listen for incoming connections on the
+     * specified port.
+     * If the server socket is not provided, it creates a new server socket on the
+     * specified port.
+     * If the listener thread is already running, it interrupts the current thread
+     * and starts a new one.
      *
      * @param listener     The current listener thread (can be null).
      * @param serverSocket The server socket to listen on (can be null).
      * @param port         The port number to listen on.
-     * @param isServer     Indicates whether the listener is running on a server or client.
+     * @param isServer     Indicates whether the listener is running on a server or
+     *                     client.
      */
     private void startListener(ListenThread listener, ServerSocket serverSocket, int port, boolean isServer) {
 
@@ -247,6 +262,7 @@ public class RouterApp extends Application {
 
     /**
      * public access for logging from client and server threads to the GUI.
+     * 
      * @param s
      */
     public void writeToConsole(String s) {
@@ -254,61 +270,168 @@ public class RouterApp extends Application {
     }
 
     /**
-     * Reserves servers for a task to meet the required number of cores. Servers with higher speed ratings are preferred.
+     * Allocates servers based on the specified thread count and distribution method.
+     *
+     * @param threadCount the number of threads to allocate servers for
+     * @return the number of servers allocated
+     * @throws IOException if an I/O error occurs
+     */
+    public synchronized int allocateServers(int threadCount) throws IOException {
+        if (cb_distribution_method.getValue().equals("Balanced")) {
+            return allocateServersBalanced(threadCount);
+        } else {
+            return allocateServersFrontLoaded(threadCount);
+        }
+    }
+
+    /**
+     * Allocates servers in a balanced manner based on the number of cores required
+     * 
+     * allocates in batches of 4 cores, round-robin fashion
      * 
      * @param threadCount number of cores required
      * @return taskId
-     * @throws IOException if no servers are available or not enough cores are available
+     * @throws IOException if no servers are available or not enough cores are
+     *                     available
      */
-    public synchronized int allocateServers(int threadCount) throws IOException {
+    public synchronized int allocateServersBalanced(int threadCount) throws IOException {
 
-        //collect all servers, sort by total tasks then speed rating
-        List<Connection> availableServers = routingTable.stream()
-        .filter(Connection::isServer)
-        .sorted(Comparator.comparingInt(Connection::getTotalTasks)
-                .thenComparingDouble(Connection::getSpeedRating).reversed())
-        .collect(Collectors.toList());
+        int n = 4; // Batch size of cores to allocate per server
+
+        // Collect and sort all servers by total tasks then speed rating
+        List<Connection> availableServers = getServersSortedByTasksThenSpeed();
 
         if (availableServers.isEmpty()) {
             throw new IOException("No servers available");
         }
 
-        //check if enough cores are available
+        // Check if enough cores are available
         int availableCores = availableServers.stream().mapToInt(Connection::getLogicalCores).sum();
-
         if (availableCores < threadCount) {
             throw new IOException("Not enough cores available");
         }
 
-        //sort by speed rating
-        availableServers.sort((a, b) -> Double.compare(a.getSpeedRating(), b.getSpeedRating()));
-
-        //select servers until enough cores are allocated
         List<Connection> selectedServers = new ArrayList<>();
+        Map<Integer, Integer> coreAllocation = new HashMap<>(); // maps server id to core count
+        int usedCores = 0;
+        int serverIndex = 0;
+
+        // Loop through the required cores and allocate in batches of `n`
+        while (usedCores < threadCount) {
+            Connection currentServer = availableServers.get(serverIndex % availableServers.size());
+            int serverId = currentServer.getId();
+            int coresToAllocate = Math.min(n, currentServer.getLogicalCores());
+
+            // Ensure we don't allocate more cores than needed
+            if (usedCores + coresToAllocate > threadCount) {
+                coresToAllocate = threadCount - usedCores;
+            }
+
+            if (!selectedServers.contains(currentServer)) {
+                selectedServers.add(currentServer);
+            }
+
+            usedCores += coresToAllocate;
+
+            if (coreAllocation.containsKey(serverId)) {
+                coreAllocation.put(serverId, coreAllocation.get(serverId) + coresToAllocate);
+            } else {
+                coreAllocation.put(serverId, coresToAllocate);
+            }
+
+            // Move to the next server in round-robin fashion
+            serverIndex++;
+        }
+
+        // We can utilize a max of 7 servers per task.
+        if (selectedServers.size() > 7) {
+            throw new IOException("Can't allocate enough cores with max server size of 7");
+        }
+
+        // Assign the task ID and update task tracking
+        int taskId = taskCounter.incrementAndGet();
+        for (Connection server : selectedServers) {
+            int coreCount = coreAllocation.get(server.getId());
+            server.addNewTask(taskId, coreCount);
+        }
+
+        return taskId;
+    }
+
+    /**
+     * Allocates servers in a front-loaded manner based on the specified thread count.
+     * Servers are selected based on their speed rating, with the highest-rated servers
+     * being allocated first. The method checks if there are enough available servers
+     * and cores to meet the requested thread count. If a single server can handle the
+     * entire load, it is allocated with the requested number of cores. Otherwise, the
+     * load is distributed across multiple servers, filling each server to its maximum
+     * capacity or until the thread count requirement is met. The method limits the
+     * server count to a maximum of 7 servers per task. A unique task ID is assigned
+     * to the allocated servers, and the core usage per server is tracked.
+     *
+     * @param threadCount the number of threads to allocate
+     * @return the task ID assigned to the allocated servers
+     * @throws IOException if no servers are available, not enough cores are available,
+     *                     or the maximum server count per task is exceeded
+     */
+    public synchronized int allocateServersFrontLoaded(int threadCount) throws IOException {
+
+        // Collect all servers sorted by speed rating (highest to lowest)
+        List<Connection> availableServers = getServersSortedByTasksThenSpeed();
+
+        if (availableServers.isEmpty()) {
+            throw new IOException("No servers available");
+        }
+
+        // Check if enough total cores are available
+        int availableCores = availableServers.stream().mapToInt(Connection::getLogicalCores).sum();
+        if (availableCores < threadCount) {
+            throw new IOException("Not enough cores available to meet the request");
+        }
+
+        List<Connection> selectedServers = new ArrayList<>();
+        Map<Integer, Integer> coreAllocation = new HashMap<>(); // Maps server id to core count
         int usedCores = 0;
 
-        for(int i = 0; i < availableServers.size(); i++) {
-            Connection server = availableServers.get(i);
-            selectedServers.add(server);
+        // First, check if a single server can handle the entire load
+        for (Connection server : availableServers) {
             int cores = server.getLogicalCores();
-            usedCores += cores;
-
-            if(usedCores >= threadCount) {
+            if (cores >= threadCount) {
+                selectedServers.add(server);
+                coreAllocation.put(server.getId(), threadCount);
+                usedCores = threadCount;
                 break;
             }
         }
 
-        //we can utilize a max of 7 servers per task. It can be higher if I added logic to further split tasks, but 7 should suffice for this project.
-        if(selectedServers.size() > 7) {
+        // If no single server can handle the load, distribute across multiple servers
+        if (usedCores < threadCount) {
+            for (Connection server : availableServers) {
+                if (usedCores >= threadCount)
+                    break; // Stop if the required cores are allocated
+
+                int serverId = server.getId();
+                int coresAvailable = server.getLogicalCores();
+                int coresToAllocate = Math.min(coresAvailable, threadCount - usedCores); // Fill server to its max or
+                                                                                         // until requirement is met
+
+                selectedServers.add(server);
+                coreAllocation.put(serverId, coresToAllocate);
+                usedCores += coresToAllocate;
+            }
+        }
+
+        // Limit server count to a max of 7 servers per task
+        if (selectedServers.size() > 7) {
             throw new IOException("Can't allocate enough cores with max server size of 7");
         }
 
+        // Assign a unique task ID and track core usage per server
         int taskId = taskCounter.incrementAndGet();
-
-        for(Connection server : selectedServers) {
-            
+        for (Connection server : selectedServers) {
+            int coreCount = coreAllocation.get(server.getId());
             try {
-                server.addNewTask(taskId);
+                server.addNewTask(taskId, coreCount);
             } catch (Exception e) {
                 throw new IOException("Error adding task to server: " + e.getMessage());
             }
@@ -319,7 +442,8 @@ public class RouterApp extends Application {
 
     /**
      * Closes all connections and sockets used by the router application.
-     * This method closes the server socket, client socket, and all connections in the routing table.
+     * This method closes the server socket, client socket, and all connections in
+     * the routing table.
      */
     private void closeConnections() {
         try {
@@ -327,9 +451,9 @@ public class RouterApp extends Application {
                 listenSocket_server.close();
             if (listenSocket_client != null)
                 listenSocket_client.close();
-            
-            //iterate through all connections and close them
-            for(Connection conn : routingTable) {
+
+            // iterate through all connections and close them
+            for (Connection conn : routingTable) {
                 conn.close();
             }
 
@@ -348,7 +472,8 @@ public class RouterApp extends Application {
     }
 
     /**
-     * Returns a list of server connections sorted by the total number of tasks and speed rating.
+     * Returns a list of server connections sorted by the total number of tasks and
+     * speed rating.
      *
      * @return a list of server connections sorted by tasks and speed
      */
@@ -356,12 +481,13 @@ public class RouterApp extends Application {
         return routingTable.stream()
                 .filter(Connection::isServer)
                 .sorted(Comparator.comparingInt(Connection::getTotalTasks)
-                        .thenComparingDouble(Connection::getSpeedRating).reversed())
+                        .thenComparingDouble(Connection::getSpeedRating))
                 .collect(Collectors.toList());
     }
 
     /**
-     * Returns a list of connections representing servers that have the specified task ID.
+     * Returns a list of connections representing servers that have the specified
+     * task ID.
      *
      * @param taskId the ID of the task
      * @return a list of connections representing servers with the specified task ID
@@ -374,10 +500,12 @@ public class RouterApp extends Application {
     }
 
     /**
-     * Retrieves a list of server connections that have the specified task ID, sorted by tasks and then speed.
+     * Retrieves a list of server connections that have the specified task ID,
+     * sorted by tasks and then speed.
      *
      * @param taskId The ID of the task to filter the server connections by.
-     * @return A list of server connections that have the specified task ID, sorted by tasks and then speed.
+     * @return A list of server connections that have the specified task ID, sorted
+     *         by tasks and then speed.
      */
     public List<Connection> getServersByTaskIdSorted(int taskId) {
         List<Connection> servers = getServersSortedByTasksThenSpeed();

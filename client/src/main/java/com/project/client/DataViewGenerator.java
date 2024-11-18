@@ -17,6 +17,7 @@ public class DataViewGenerator {
      * - MILLISECONDS: For time values in milliseconds.
      * - PERCENTAGE: For ratios between 0 and 1 (expects a long value calculated as
      * (long) (ratio * 100)).
+     * - DOUBLE_TWO_DECIMAL: For double values with two decimal places.
      * - RAW: For plain numbers without formatting.
      */
     public enum FormatType {

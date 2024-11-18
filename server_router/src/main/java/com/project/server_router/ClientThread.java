@@ -19,8 +19,10 @@ import com.project.shared.TaskData;
 import com.project.shared.Timestamp;
 
 /**
- * Extends the `RouterThread` class and represents a thread that handles communication with a client.
- * Receives messages from the client, processes them, and sends appropriate responses.
+ * Extends the `RouterThread` class and represents a thread that handles
+ * communication with a client.
+ * Receives messages from the client, processes them, and sends appropriate
+ * responses.
  * Responsible for handling client requests, tasks, and results.
  */
 public class ClientThread extends RouterThread {
@@ -43,16 +45,17 @@ public class ClientThread extends RouterThread {
         dataQueueThread.start();
         socketThread.start();
     }
-    
+
     /**
      * This method represents the main loop for receiving messages from the client.
-     * It continuously waits for messages from the client and handles them accordingly.
+     * It continuously waits for messages from the client and handles them
+     * accordingly.
      */
     private void socketLoop() {
 
         while (true) {
 
-            //wait for message from client
+            // wait for message from client
             Data recv = null;
             try {
                 recv = (Data) in.readObject();
@@ -62,14 +65,12 @@ public class ClientThread extends RouterThread {
                 log("Failed to receive message from client");
             }
 
-            if(recv == null || recv.getType() == Data.Type.CLOSE) {
+            if (recv == null || recv.getType() == Data.Type.CLOSE) {
                 break;
-            }
-            else if(recv.getType() == Data.Type.REQUEST) {
-                handleRequest((RequestData)recv.getData());
-            }
-            else if(recv.getType() == Data.Type.TASK_DATA) {
-                handleTask((TaskData)recv.getData());
+            } else if (recv.getType() == Data.Type.REQUEST) {
+                handleRequest((RequestData) recv.getData());
+            } else if (recv.getType() == Data.Type.TASK_DATA) {
+                handleTask((TaskData) recv.getData());
             }
         }
 
@@ -79,12 +80,14 @@ public class ClientThread extends RouterThread {
     }
 
     /**
-     * This method represents the main loop for processing data received from the data queue.
-     * It continuously retrieves data from the queue and handles it accordingly until a CLOSE
+     * This method represents the main loop for processing data received from the
+     * data queue.
+     * It continuously retrieves data from the queue and handles it accordingly
+     * until a CLOSE
      * data type is received.
      */
     private void dataQueueLoop() {
-        while (true) { 
+        while (true) {
 
             Data recv = null;
 
@@ -94,14 +97,14 @@ public class ClientThread extends RouterThread {
                 log("Failed to take data from queue");
             }
 
-            if(recv == null || recv.getType() == Data.Type.CLOSE) {
+            if (recv == null || recv.getType() == Data.Type.CLOSE) {
                 break;
             }
 
-            if(recv.getType() == Data.Type.RESULT_DATA) {
-                handleResult((ResultData)recv.getData());
+            if (recv.getType() == Data.Type.RESULT_DATA) {
+                handleResult((ResultData) recv.getData());
             }
-            
+
         }
 
         handleClose();
@@ -137,8 +140,8 @@ public class ClientThread extends RouterThread {
 
         try {
             taskId = routerApp.allocateServers(threadCount);
-        } catch (IOException e) { 
-            //unable to allocate, send error message to client
+        } catch (IOException e) {
+            // unable to allocate, send error message to client
             String message = e.getMessage();
 
             ResponseData resp = new ResponseData(message, false, -1);
@@ -157,10 +160,10 @@ public class ClientThread extends RouterThread {
         log("Request accepted, task id: " + taskId);
 
         taskTimestamps.put(taskId, new ArrayList<>());
-        myConnection.addNewTask(taskId);
+        myConnection.addNewTask(taskId, threadCount);
         myConnection.incrementTask(taskId, 7);
 
-        //send confirmation to client
+        // send confirmation to client
         ResponseData resp = new ResponseData("Task " + taskId + " started", true, taskId);
         Data send = new Data(Data.Type.RESPONSE, resp);
 
@@ -172,7 +175,7 @@ public class ClientThread extends RouterThread {
         }
 
         try {
-            myConnection.addNewTask(taskId);
+            myConnection.addNewTask(taskId, threadCount);
             myConnection.incrementTask(taskId, 7);
         } catch (Exception e) {
             log("Error adding task to client");
@@ -182,14 +185,15 @@ public class ClientThread extends RouterThread {
     /**
      * Handles the matrix multiplication task from the client.
      * 
-     * Divides and processes the input matrices into the 7 pairs of submatrices required for calculation of M values in Strassen algorithm.
+     * Divides and processes the input matrices into the 7 pairs of submatrices
+     * required for calculation of M values in Strassen algorithm.
      *
      * @param task The task data containing the matrices and thread count.
      */
     private void handleTask(TaskData task) {
 
-        if(!myConnection.hasTaskId(task.getTaskId())) {
-            //bad
+        if (!myConnection.hasTaskId(task.getTaskId())) {
+            // bad
             log("Received unauthorized task");
             return;
         }
@@ -199,71 +203,59 @@ public class ClientThread extends RouterThread {
         log("Processing task... " + task.getTaskId());
         log("Received 2 matrices of size " + task.getMatrixA().length + "x" + task.getMatrixA()[0].length);
 
-        //collect all servers that are assigned to this task (sorted by total tasks then speed)
+        // collect all servers that are assigned to this task (sorted by total tasks
+        // then speed)
         int taskId = task.getTaskId();
         List<Connection> myServers = routerApp.getServersByTaskIdSorted(taskId);
-        int serverCount = myServers.size();
-        int threadCount = task.getThreadsToUse();
 
-        //geneate submatrices
+        // geneate submatrices
         int[][][] subMatrices = getSubMatrices(task);
 
         List<SubTaskData> subTasks = Arrays.asList(
-            new SubTaskData(StrassenExecutor.stras_M1(subMatrices), 0, taskId),
-            new SubTaskData(StrassenExecutor.stras_M2(subMatrices), 1, taskId),
-            new SubTaskData(StrassenExecutor.stras_M3(subMatrices), 2, taskId),
-            new SubTaskData(StrassenExecutor.stras_M4(subMatrices), 3, taskId),
-            new SubTaskData(StrassenExecutor.stras_M5(subMatrices), 4, taskId),
-            new SubTaskData(StrassenExecutor.stras_M6(subMatrices), 5, taskId),
-            new SubTaskData(StrassenExecutor.stras_M7(subMatrices), 6, taskId)
-        );
-
-        subMatrices = null;
+                new SubTaskData(StrassenExecutor.stras_M1(subMatrices), 0, taskId),
+                new SubTaskData(StrassenExecutor.stras_M2(subMatrices), 1, taskId),
+                new SubTaskData(StrassenExecutor.stras_M3(subMatrices), 2, taskId),
+                new SubTaskData(StrassenExecutor.stras_M4(subMatrices), 3, taskId),
+                new SubTaskData(StrassenExecutor.stras_M5(subMatrices), 4, taskId),
+                new SubTaskData(StrassenExecutor.stras_M6(subMatrices), 5, taskId),
+                new SubTaskData(StrassenExecutor.stras_M7(subMatrices), 6, taskId));
 
         taskMatrices.put(taskId, new int[7][][]);
         taskTimestamps.get(taskId).add(new Timestamp("task divided by router"));
 
-        int tasksPerServer = subTasks.size() / serverCount;
-        int remainder = subTasks.size() % serverCount;
         int taskIndex = 0;
-        int threadsLeft = threadCount;
 
-        for(int s = 0; s < myServers.size(); s++) {
+        // Distribute subtasks to each server according to their core allocation
+        for (Connection server : myServers) {
+            int coresAllocated = server.getTaskCores(taskId); // Get allocated cores for this server
+            int tasksForThisServer = subTasks.size() / myServers.size(); // Tasks allocated per server
+            int remainderTasks = subTasks.size() % myServers.size(); // Handle extra tasks
 
-            int n_threads = myServers.get(s).getLogicalCores();
-
-            if(threadsLeft < n_threads) {
-                n_threads = threadsLeft;
-
-                //if not the last server in the list, we have a problem
-                if(s != myServers.size() - 1) {
-                    log("Not enough threads to allocate to all servers");
-                    break;
-                }
-            } else {
-                threadsLeft -= n_threads;
+            if (myServers.indexOf(server) < remainderTasks) {
+                tasksForThisServer++; // Extra task for the first `remainderTasks` servers
             }
 
-            //each gets tasksPerServer tasks, if s < remainder, add 1 more task
-            int taskCount = tasksPerServer + (s < remainder ? 1 : 0);
-            Connection server = myServers.get(s);
+            server.incrementTask(taskId, tasksForThisServer);
 
-            server.addNewTask(taskId);
-            server.incrementTask(taskId, taskCount);
-
-            for(int t = 0; t < taskCount; t++) {
+            // Allocate subtasks to server with correct core allocation
+            for (int i = 0; i < tasksForThisServer; i++) {
+                if (taskIndex >= subTasks.size())
+                    break; // Exit loop if all tasks assigned
 
                 SubTaskData subTask = subTasks.get(taskIndex++);
-                subTask.setCoresToUse(n_threads);
+                subTask.setCoresToUse(coresAllocated); // Set the core count for the subtask based on allocation
                 Data send = new Data(Data.Type.SUBTASK_DATA, subTask);
 
                 try {
-                    server.dataQueue.put(send);
+                    server.dataQueue.put(send); // Send subtask to server's queue
+                    log("Sent subtask M" + (subTask.getM() + 1) + " to server " + server.getId() + " with "
+                            + coresAllocated + " cores");
                 } catch (InterruptedException e) {
                     log("Failed to send subtask to ServerThread");
                     Thread.currentThread().interrupt();
                 }
 
+                // Record timestamp for subtask dispatch
                 taskTimestamps.get(taskId).add(new Timestamp("M" + (subTask.getM() + 1) + " sent to server"));
             }
         }
@@ -272,7 +264,8 @@ public class ClientThread extends RouterThread {
     /**
      * Handles the result received from the servers.
      * 
-     * Combines the results from the 7 submatrices and sends the final result to the client.
+     * Combines the results from the 7 submatrices and sends the final result to the
+     * client.
      *
      * @param result The result data received from the server.
      */
@@ -281,14 +274,14 @@ public class ClientThread extends RouterThread {
         int taskId = result.getTaskId();
         int subTaskId = result.getM();
 
-        if(!myConnection.hasTaskId(taskId)) {
-            //bad
+        if (!myConnection.hasTaskId(taskId)) {
+            // bad
             log("Received result with task id not associated with client");
             return;
         }
 
-        if(subTaskId < 0 || subTaskId >= 7) {
-            //bad
+        if (subTaskId < 0 || subTaskId >= 7) {
+            // bad
             log("Received result with invalid subtask id");
             return;
         }
@@ -300,17 +293,16 @@ public class ClientThread extends RouterThread {
 
         myConnection.decrementTask(taskId, 1);
 
-        if(myConnection.getTasksRemaining(taskId) == 0) {
+        if (myConnection.getTasksRemaining(taskId) == 0) {
 
-            //all results received, combine and send to client
+            // all results received, combine and send to client
             int[][] resultMatrix = StrassenExecutor.combineMatricesFromM(taskMatrices.get(taskId));
 
             taskTimestamps.get(taskId).add(new Timestamp("result sent by router"));
 
             ResultData resultData = new ResultData(
-                resultMatrix, -1, taskId,
-                taskTimestamps.get(taskId)
-            );
+                    resultMatrix, -1, taskId,
+                    taskTimestamps.get(taskId));
 
             Data send = new Data(Data.Type.RESULT_DATA, resultData);
 
@@ -321,7 +313,7 @@ public class ClientThread extends RouterThread {
                 log("Failed to send result to client");
             }
 
-            //clean up
+            // clean up
             myConnection.removeTask(taskId);
             taskTimestamps.remove(taskId);
             taskMatrices.remove(taskId);
@@ -329,7 +321,8 @@ public class ClientThread extends RouterThread {
     }
 
     /**
-     * Divides the given matrices into submatrices and returns an array of submatrices.
+     * Divides the given matrices into submatrices and returns an array of
+     * submatrices.
      *
      * @param task The task data containing the matrices.
      * @return An array of submatrices. size [2][n/2][n/2]
@@ -342,7 +335,7 @@ public class ClientThread extends RouterThread {
         int size = matrices[0].length;
         int halfSize = size / 2;
 
-        //geneate indices for submatrices
+        // geneate indices for submatrices
         int[][][] subMatrices = new int[8][halfSize][halfSize];
         divideIntoQuadrants(matrices[0], subMatrices[0], subMatrices[1], subMatrices[2], subMatrices[3]);
         divideIntoQuadrants(matrices[1], subMatrices[4], subMatrices[5], subMatrices[6], subMatrices[7]);
